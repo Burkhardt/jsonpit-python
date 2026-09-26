@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 def run_suite() -> int:
 	import tests.test_canonical as t_canon
 	import tests.test_change_file as t_change
+	import tests.test_cli as t_cli
 	import tests.test_csharp_compatibility as t_compat
 	import tests.test_delete_property_projection as t_dp
 	import tests.test_equal_timestamp_ordering as t_equal
@@ -33,6 +34,7 @@ def run_suite() -> int:
 		("test_delete_property_projection", t_dp),
 		("test_master_ticket", t_master),
 		("test_change_file", t_change),
+		("test_cli", t_cli),
 	]
 
 	total = 0

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "jsonpit"
 version = "0.1.0"
-description = "Cloud-first, eventually-consistent replicated storage engine in pure Python with 100% C# JsonPit parity."
+description = "Daemon-free distributed storage over Cloud Drives — multi-process, immutable history, zero dependencies."
 readme = "README.md"
 requires-python = ">=3.12"
 license = "Apache-2.0"
@@ -24,6 +24,10 @@ classifiers = [
 	"Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = []
+
+[project.scripts]
+jpit = "jsonpit.cli:main"
+jsonpit = "jsonpit.cli:main"
 
 [project.optional-dependencies]
 dev = [

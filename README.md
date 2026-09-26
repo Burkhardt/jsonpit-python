@@ -1,6 +1,6 @@
 # jsonpit
 
-> **Cloud-First, Eventually-Consistent Replicated Storage Engine in Pure Python**  
+> **Daemon-free distributed storage over Cloud Drives — multi-process, immutable history, zero dependencies.**  
 > *100% C# JsonPit Parity · Zero Third-Party Runtime Dependencies · Smalltalk-Grade Object-Oriented Architecture*
 
 `jsonpit` stores JsonPits—JSON files with an append-only value history—across machines and servers coordinated over synchronized Cloud Drives (`OneDrive`, `Dropbox`, `GoogleDrive`, `ICloudDrive`) without requiring a centralized database daemon.
@@ -58,6 +58,31 @@ For local test directories or custom scripts:
 with Pit.open("/path/to/my/Person") as pit:
     for item in pit.values():
         print(item.id, item.modified)
+```
+
+### 3. Developer Companion CLI: `jpit`
+
+The package installs both `jpit` and `jsonpit` commands:
+
+```bash
+# Fast semantic search across one or all pits ("Pit-Grep"):
+jpit grep "Adele" Person
+jpit grep "Burkhardt" --root AIA
+
+# Pipe search results directly into jq:
+jpit grep "Jazz" Person --json | jq '.[].Genre'
+
+# Inspect entity living state or full immutable history:
+jpit get Person Rainer
+jpit history Person Rainer
+
+# Pipe JSON5 / JSON mutations directly into a pit:
+cat update.json5 | jpit put Person
+echo '{id: "AlanKay", dynabook: true}' | jpit put Person
+
+# Set individual properties or tombstone an entity:
+jpit set Person AlanKay Status "Visionary"
+jpit del Person ObsoleteEntity
 ```
 
 ---

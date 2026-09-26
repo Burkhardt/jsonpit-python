@@ -406,14 +406,14 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		"""Adds a fragment while preserving its original Modified timestamp intact."""
 		return self.add(item, refresh_modified=False)
 
-	def delete_item(self, item_id: str, by: str | None = None, backdate_100: bool = True) -> bool:
+	def delete_item(self, item_id: str, by: str | None = None, backdate_100: bool = False) -> bool:
 		"""
 		Tombstones an entity across the distributed mesh.
-		Backdates timestamp by 100 seconds to preserve deletion precedence.
+		Stamps the tombstone with the current wall-clock instant of deletion.
 		"""
 		tombstone = PitItem(id=item_id)
 		if tombstone.delete(by=by, backdate_100=backdate_100):
-			return self.add_historical(tombstone)
+			return self.add(tombstone, refresh_modified=True)
 		return False
 
 	def has_dirty_items(self) -> bool:
