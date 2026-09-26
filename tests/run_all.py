@@ -1,0 +1,71 @@
+"""
+Unified runner for the entire jsonpit test suite.
+Can be executed directly via: python3 tests/run_all.py
+"""
+
+from __future__ import annotations
+
+import sys
+import time
+import traceback
+from pathlib import Path
+
+# Ensure workspace root is in sys.path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+	sys.path.insert(0, str(PROJECT_ROOT))
+
+
+def run_suite() -> int:
+	import tests.test_canonical as t_canon
+	import tests.test_change_file as t_change
+	import tests.test_csharp_compatibility as t_compat
+	import tests.test_delete_property_projection as t_dp
+	import tests.test_equal_timestamp_ordering as t_equal
+	import tests.test_master_ticket as t_master
+	import tests.test_pit_item as t_item
+
+	modules = [
+		("test_canonical", t_canon),
+		("test_csharp_compatibility", t_compat),
+		("test_pit_item", t_item),
+		("test_equal_timestamp_ordering", t_equal),
+		("test_delete_property_projection", t_dp),
+		("test_master_ticket", t_master),
+		("test_change_file", t_change),
+	]
+
+	total = 0
+	passed = 0
+	failed = 0
+	start_time = time.perf_counter()
+
+	print("=" * 70)
+	print("jsonpit Test Suite Execution (100% C# Parity)")
+	print("=" * 70)
+
+	for mod_name, mod in modules:
+		print(f"\n[{mod_name}]")
+		for attr_name in dir(mod):
+			if attr_name.startswith("test_") and callable(getattr(mod, attr_name)):
+				func = getattr(mod, attr_name)
+				total += 1
+				try:
+					func()
+					passed += 1
+					print(f"  \u2714 {attr_name}")
+				except Exception as ex:
+					failed += 1
+					print(f"  \u2716 {attr_name} FAILED: {ex}")
+					traceback.print_exc()
+
+	duration = time.perf_counter() - start_time
+	print("\n" + "=" * 70)
+	print(f"Results: {passed} passed, {failed} failed in {duration:.3f}s (Total: {total})")
+	print("=" * 70)
+
+	return 0 if failed == 0 else 1
+
+
+if __name__ == "__main__":
+	sys.exit(run_suite())

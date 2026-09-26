@@ -4,12 +4,12 @@ jsonpit — Cloud-first, eventually-consistent replicated storage engine in pure
 """
 
 from .exceptions import (
-    JsonPitError,
-    PitConcurrencyError,
-    PitCorruptError,
-    PitInstanceConflictError,
-    PitNotFoundError,
-    TombstoneError,
+	JsonPitError,
+	PitConcurrencyError,
+	PitCorruptError,
+	PitInstanceConflictError,
+	PitNotFoundError,
+	TombstoneError,
 )
 from .fs import OsConfig
 from .history import PitItems
@@ -19,14 +19,14 @@ from .store import Pit
 __version__ = "0.1.0"
 
 __all__ = [
-    "Pit",
-    "PitItem",
-    "PitItems",
-    "OsConfig",
-    "JsonPitError",
-    "PitNotFoundError",
-    "PitCorruptError",
-    "PitConcurrencyError",
-    "PitInstanceConflictError",
-    "TombstoneError",
+	"Pit",
+	"PitItem",
+	"PitItems",
+	"OsConfig",
+	"JsonPitError",
+	"PitNotFoundError",
+	"PitCorruptError",
+	"PitConcurrencyError",
+	"PitInstanceConflictError",
+	"TombstoneError",
 ]
