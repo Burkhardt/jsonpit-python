@@ -53,6 +53,20 @@ def discover_pits(
 	Discovers one or multiple pits based on a target name or root.
 	If target is an entire root (e.g. 'AIA'), discovers all contained pits.
 	"""
+	# Check if target is current directory or default
+	if target in (".", ""):
+		cwd = Path.cwd()
+		discovered_cwd: list[tuple[Path, str]] = []
+		for child in sorted(cwd.iterdir()):
+			if child.is_dir():
+				pit_file = child / f"{child.name}.pit"
+				if pit_file.is_file():
+					discovered_cwd.append((child, child.name))
+			elif child.suffix.lower() == ".pit":
+				discovered_cwd.append((child.parent, child.stem))
+		if discovered_cwd:
+			return discovered_cwd
+
 	# Check if target is a single pit or an explicit directory
 	try:
 		p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
@@ -91,20 +105,32 @@ def cmd_grep(args: argparse.Namespace) -> int:
 	Pit-Grep: Living-state semantic search across single or multiple pits.
 	Filters out deleted entities by default, supports time-travel and property scoping.
 	"""
+	pattern_raw = args.pattern
+	target_raw = args.target
+
+	# Smart swap if user passed target first and pattern second:
+	if (
+		Path(pattern_raw).exists()
+		or pattern_raw.endswith(".pit")
+		or ("/" in pattern_raw and not pattern_raw.startswith("-"))
+		or ("\\" in pattern_raw)
+	) and not Path(target_raw).exists() and target_raw != ".":
+		pattern_raw, target_raw = target_raw, pattern_raw
+
 	at_time: datetime.datetime | None = None
 	if args.at:
 		at_time = parse_iso_timestamp(args.at)
 
 	flags = re.IGNORECASE if args.ignore_case else 0
 	try:
-		pattern = re.compile(args.pattern if args.regex else re.escape(args.pattern), flags)
+		pattern = re.compile(pattern_raw if args.regex else re.escape(pattern_raw), flags)
 	except re.error as ex:
 		sys.stderr.write(f"[jpit] Regex error: {ex}\n")
 		return 1
 
-	pits = discover_pits(args.target, cloud=args.cloud, root=args.root)
+	pits = discover_pits(target_raw, cloud=args.cloud, root=args.root)
 	if not pits:
-		sys.stderr.write(f"[jpit] No pits found for target '{args.target}'.\n")
+		sys.stderr.write(f"[jpit] No pits found for target '{target_raw}'.\n")
 		return 1
 
 	matched_entities: list[dict[str, Any]] = []
@@ -425,8 +451,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 	# grep (Pit-Grep)
 	p_grep = subparsers.add_parser("grep", help="Ripgrep-style living state search across pits")
-	p_grep.add_argument("target", help="Pit name or root directory (e.g. Person, AIA)")
 	p_grep.add_argument("pattern", help="Text or regex to match")
+	p_grep.add_argument("target", nargs="?", default=".", help="Pit name, file path, or tenant root (default: current directory)")
 	p_grep.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive search")
 	p_grep.add_argument("-e", "--regex", action="store_true", help="Treat pattern as regex")
 	p_grep.add_argument("-p", "--property", help="Scope search to a specific property path")
