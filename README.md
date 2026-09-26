@@ -1,6 +1,6 @@
 # jsonpit
 
-> **Daemon-free distributed storage over Cloud Drives — multi-process, immutable history, zero dependencies.**  
+> **Daemon-free distributed storage over Cloud Drives for developers and AI agents — multi-process, immutable history, zero dependencies.**  
 > *100% C# JsonPit Parity · Zero Third-Party Runtime Dependencies · Smalltalk-Grade Object-Oriented Architecture*
 
 `jsonpit` stores JsonPits—JSON files with an append-only value history—across machines and servers coordinated over synchronized Cloud Drives (`OneDrive`, `Dropbox`, `GoogleDrive`, `ICloudDrive`) without requiring a centralized database daemon.
@@ -11,6 +11,7 @@ It is the authoritative Python implementation of the JsonPit protocol, designed 
 
 ## Key Features
 
+- **The Persistence Fabric for AI Agents:** Autonomous agents running across macOS desktop apps, backend servers, and web runtimes synchronize memory and living state across shared cloud drives without managing database servers, connection pools, or cloud credentials.
 - **0% Deviation from C# JsonPit:** Reads, merges, and writes pits with identical canonical JSON serialization, UTC timestamp precision, and tombstone semantics.
 - **Zero Third-Party Runtime Dependencies:** Built strictly on the Python Standard Library (`json`, `pathlib`, `typing`, `dataclasses`, `datetime`, `hashlib`, `socket`).
 - **Cloud-Safe Filesystem Invariants (CR022):** In-place sibling writes (`.pit.tmp` $\rightarrow$ atomic rename within the same cloud volume). Prevents cross-device link errors (`EXDEV`) and OneDrive mass-deletion alarms.
@@ -99,6 +100,16 @@ Person/
 ├── Events/                        # Immutable change streams & compaction archives
 └── Changes/                       # Hashed, collision-safe change files & receipts
 ```
+
+---
+
+## Autonomous Agents & Cross-Platform State
+
+`jsonpit` solves the distributed state dilemma for autonomous AI agents:
+
+1. **Zero Database Infrastructure:** An agent needs only a directory path on a synchronized cloud drive (e.g. `OneDriveData/AIA/AgentMemory`). It never requires cloud database API keys, connection pools, firewall punch-through, or hosted database servers.
+2. **Auditability & Time-Travel:** Because history is strictly append-only and stamped with .NET `UtcTicks`, every agent mutation retains full provenance. Operators or supervising agents can time-travel and inspect exact state at any millisecond.
+3. **Multi-Agent Collision-Proof Coordination:** Multiple agents (or desktop apps + background agents) coordinate through collision-free change files (`Changes/`) and opportunistic master writer leases (`Master.flag`), guaranteeing eventual consistency without write collisions.
 
 ---
 
