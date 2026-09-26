@@ -162,3 +162,29 @@ def test_read_operation_never_creates_directories(capsys: Any = None) -> None:
 			code = main(["grep", "Ghost", str(non_existent_pit)])
 		assert code == 1
 		assert not non_existent_pit.exists(), "Grep must never create ghost directory!"
+
+
+def test_disallow_manual_modified_or_deleted(capsys: Any = None) -> None:
+	with tempfile.TemporaryDirectory() as tmp_dir:
+		pit_dir = Path(tmp_dir) / "TestPit"
+
+		# Setting Deleted must fail
+		f_err1 = io.StringIO()
+		with contextlib.redirect_stderr(f_err1):
+			code1 = main(["set", str(pit_dir), "Item1", '{"Deleted": true}'])
+		assert code1 == 1
+		assert "Use 'jpit del'" in f_err1.getvalue()
+
+		# Setting Modified must fail
+		f_err2 = io.StringIO()
+		with contextlib.redirect_stderr(f_err2):
+			code2 = main(["set", str(pit_dir), "Item1", '{"Modified": "2026-01-01T00:00:00Z"}'])
+		assert code2 == 1
+		assert "Cannot manually update protected attribute 'Modified'" in f_err2.getvalue()
+
+		# del-prop on protected attribute must fail
+		f_err3 = io.StringIO()
+		with contextlib.redirect_stderr(f_err3):
+			code3 = main(["del-prop", str(pit_dir), "Item1", "Deleted"])
+		assert code3 == 1
+		assert "Cannot tombstone protected attribute 'Deleted'" in f_err3.getvalue()

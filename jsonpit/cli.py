@@ -331,6 +331,15 @@ def cmd_put(args: argparse.Namespace) -> int:
 		sys.stderr.write("[jpit] Error: Input data contains no valid entity objects.\n")
 		return 1
 
+	for raw_obj in items_to_add:
+		forbidden = [k for k in raw_obj if k.lower() in ("modified", "deleted")]
+		if forbidden:
+			sys.stderr.write(
+				f"[jpit] Error: Cannot manually update protected attribute '{forbidden[0]}'. "
+				"Use 'jpit del' to delete an entity.\n"
+			)
+			return 1
+
 	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
 		count = 0
 		for raw_obj in items_to_add:
@@ -350,6 +359,14 @@ def cmd_set(args: argparse.Namespace) -> int:
 	payload = loads_json5(args.payload)
 	if not isinstance(payload, dict):
 		sys.stderr.write("[jpit] Payload must evaluate to a JSON5 object.\n")
+		return 1
+
+	forbidden = [k for k in payload if k.lower() in ("modified", "deleted")]
+	if forbidden:
+		sys.stderr.write(
+			f"[jpit] Error: Cannot manually update protected attribute '{forbidden[0]}'. "
+			"Use 'jpit del' to delete an entity.\n"
+		)
 		return 1
 
 	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
@@ -380,6 +397,13 @@ def cmd_delete(args: argparse.Namespace) -> int:
 
 def cmd_delete_prop(args: argparse.Namespace) -> int:
 	"""Appends a property tombstone at a dot-delimited property path."""
+	if args.property_path.lower() in ("id", "modified", "deleted"):
+		sys.stderr.write(
+			f"[jpit] Error: Cannot tombstone protected attribute '{args.property_path}'. "
+			"Use 'jpit del' to delete an entity.\n"
+		)
+		return 1
+
 	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
 		item = pit.get(args.id)
 		if item is None:
