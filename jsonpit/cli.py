@@ -442,8 +442,16 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
 	common_parser = argparse.ArgumentParser(add_help=False)
-	common_parser.add_argument("-c", "--cloud", default="OneDrive", help="Cloud drive (OneDrive, Dropbox, etc.)")
-	common_parser.add_argument("-r", "--root", default=None, help="Root folder / tenant (e.g. AIA, AfricaStage)")
+	common_parser.add_argument(
+		"-c", "--cloud",
+		default=argparse.SUPPRESS,
+		help="Cloud drive (OneDrive, Dropbox, etc.)",
+	)
+	common_parser.add_argument(
+		"-r", "--root",
+		default=argparse.SUPPRESS,
+		help="Root folder / tenant (e.g. AIA, AfricaStage)",
+	)
 
 	parser = argparse.ArgumentParser(
 		prog="jpit",
@@ -531,6 +539,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
 	parser = build_parser()
 	args = parser.parse_args(argv)
+
+	if not hasattr(args, "cloud"):
+		args.cloud = "OneDrive"
+	if not hasattr(args, "root"):
+		args.root = None
 
 	dispatch = {
 		"grep": cmd_grep,
