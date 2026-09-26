@@ -24,6 +24,7 @@ from .exceptions import JsonPitError, PitNotFoundError
 from .fs import resolve_pit_target
 from .item import PitItem
 from .store import Pit
+from . import __version__
 
 
 def run_jq_filter(json_text: str, jq_filter: str) -> None:
@@ -443,6 +444,12 @@ def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="jpit",
 		description="jpit — Cloud-first distributed replicated storage CLI and Pit-Grep.",
+	)
+	parser.add_argument(
+		"-v",
+		"--version",
+		action="version",
+		version=f"%(prog)s {__version__}",
 	)
 	parser.add_argument("-c", "--cloud", default="OneDrive", help="Cloud drive (OneDrive, Dropbox, etc.)")
 	parser.add_argument("-r", "--root", default=None, help="Root folder / tenant (e.g. AIA, AfricaStage)")

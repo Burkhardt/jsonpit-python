@@ -118,3 +118,13 @@ def test_cli_status_command(capsys: Any = None) -> None:
 	out = f_out.getvalue()
 	assert "Pit Status" in out
 	assert "Master Lease" in out
+
+
+def test_cli_version_flag(capsys: Any = None) -> None:
+	f_out = io.StringIO()
+	try:
+		with contextlib.redirect_stdout(f_out):
+			main(["-v"])
+	except SystemExit as ex:
+		assert ex.code == 0
+	assert "0.1.1" in f_out.getvalue()

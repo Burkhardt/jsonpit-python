@@ -14,9 +14,11 @@ from .exceptions import (
 from .fs import OsConfig
 from .history import PitItems
 from .item import PitItem
-from .store import Pit
-
-__version__ = "0.1.0"
+try:
+	import importlib.metadata
+	__version__ = importlib.metadata.version("jsonpit")
+except Exception:
+	__version__ = "0.1.1"
 
 __all__ = [
 	"Pit",
