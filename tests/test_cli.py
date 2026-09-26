@@ -127,7 +127,8 @@ def test_cli_version_flag(capsys: Any = None) -> None:
 			main(["-v"])
 	except SystemExit as ex:
 		assert ex.code == 0
-	assert ("0.1.1" in f_out.getvalue()) or ("0.1.2" in f_out.getvalue())
+	from jsonpit import __version__
+	assert __version__ in f_out.getvalue()
 
 
 def test_cli_flexible_option_placement(capsys: Any = None) -> None:
@@ -144,3 +145,20 @@ def test_cli_flexible_option_placement(capsys: Any = None) -> None:
 		code2 = main(["grep", "Adele", str(FIXTURE_PATH), "--root", "AIA"])
 	assert code2 == 0
 	assert "Adele" in f_out2.getvalue()
+
+
+def test_read_operation_never_creates_directories(capsys: Any = None) -> None:
+	with tempfile.TemporaryDirectory() as tmp_dir:
+		non_existent_pit = Path(tmp_dir) / "GhostPit"
+		assert not non_existent_pit.exists()
+
+		f_err = io.StringIO()
+		with contextlib.redirect_stderr(f_err):
+			code = main(["get", str(non_existent_pit), "GhostEntity"])
+		assert code == 1
+		assert not non_existent_pit.exists(), "Read operation must never create ghost directory!"
+
+		with contextlib.redirect_stderr(f_err):
+			code = main(["grep", "Ghost", str(non_existent_pit)])
+		assert code == 1
+		assert not non_existent_pit.exists(), "Grep must never create ghost directory!"

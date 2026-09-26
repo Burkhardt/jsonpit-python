@@ -63,7 +63,7 @@ class JsonPitBase:
 		backup: bool = False,
 		unflagged: bool = False,
 	) -> None:
-		self.pit_dir = ensure_directory(pit_dir)
+		self.pit_dir = Path(pit_dir)
 		self.pit_name = pit_name
 		self.canonical_file = self.pit_dir / f"{pit_name}.pit"
 		self.subscriber = subscriber

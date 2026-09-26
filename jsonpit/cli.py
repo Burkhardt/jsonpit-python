@@ -96,9 +96,14 @@ def discover_pits(
 	if discovered:
 		return discovered
 
-	# Fallback single pit target
-	p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
-	return [(p_dir, p_name)]
+	# Fallback single pit target (only return if it physically exists)
+	try:
+		p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
+		if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
+			return [(p_dir, p_name)]
+	except Exception:
+		pass
+	return []
 
 
 def cmd_grep(args: argparse.Namespace) -> int:
@@ -213,6 +218,10 @@ def cmd_get(args: argparse.Namespace) -> int:
 		read_only=True,
 		unflagged=True,
 	) as pit:
+		if not pit.canonical_file.is_file():
+			sys.stderr.write(f"[jpit] Pit '{args.pit}' not found at {pit.pit_dir}.\n")
+			return 1
+
 		item = pit.get(args.id, at=at_time, with_deleted=args.with_deleted)
 		if item is None:
 			sys.stderr.write(f"[jpit] Entity '{args.id}' not found in Pit '{pit.pit_name}'.\n")
@@ -235,6 +244,10 @@ def cmd_history(args: argparse.Namespace) -> int:
 		read_only=True,
 		unflagged=True,
 	) as pit:
+		if not pit.canonical_file.is_file():
+			sys.stderr.write(f"[jpit] Pit '{args.pit}' not found at {pit.pit_dir}.\n")
+			return 1
+
 		pit_items = pit._historic_items.get(args.id)
 		if pit_items is None:
 			sys.stderr.write(f"[jpit] No history for '{args.id}' in Pit '{pit.pit_name}'.\n")
@@ -258,6 +271,10 @@ def cmd_list(args: argparse.Namespace) -> int:
 		read_only=True,
 		unflagged=True,
 	) as pit:
+		if not pit.canonical_file.is_file():
+			sys.stderr.write(f"[jpit] Pit '{args.pit}' not found at {pit.pit_dir}.\n")
+			return 1
+
 		keys = list(pit.keys())
 		if args.json:
 			entities = [pit[k].to_dict() for k in keys]
