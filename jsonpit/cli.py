@@ -441,9 +441,14 @@ def cmd_status(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
+	common_parser = argparse.ArgumentParser(add_help=False)
+	common_parser.add_argument("-c", "--cloud", default="OneDrive", help="Cloud drive (OneDrive, Dropbox, etc.)")
+	common_parser.add_argument("-r", "--root", default=None, help="Root folder / tenant (e.g. AIA, AfricaStage)")
+
 	parser = argparse.ArgumentParser(
 		prog="jpit",
 		description="jpit — Cloud-first distributed replicated storage CLI and Pit-Grep.",
+		parents=[common_parser],
 	)
 	parser.add_argument(
 		"-v",
@@ -451,13 +456,11 @@ def build_parser() -> argparse.ArgumentParser:
 		action="version",
 		version=f"%(prog)s {__version__}",
 	)
-	parser.add_argument("-c", "--cloud", default="OneDrive", help="Cloud drive (OneDrive, Dropbox, etc.)")
-	parser.add_argument("-r", "--root", default=None, help="Root folder / tenant (e.g. AIA, AfricaStage)")
 
 	subparsers = parser.add_subparsers(dest="command", required=True)
 
 	# grep (Pit-Grep)
-	p_grep = subparsers.add_parser("grep", help="Ripgrep-style living state search across pits")
+	p_grep = subparsers.add_parser("grep", parents=[common_parser], help="Ripgrep-style living state search across pits")
 	p_grep.add_argument("pattern", help="Text or regex to match")
 	p_grep.add_argument("target", nargs="?", default=".", help="Pit name, file path, or tenant root (default: current directory)")
 	p_grep.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive search")
@@ -469,7 +472,7 @@ def build_parser() -> argparse.ArgumentParser:
 	p_grep.add_argument("--with-deleted", action="store_true", help="Include tombstoned entities")
 
 	# get
-	p_get = subparsers.add_parser("get", help="Get entity projected state")
+	p_get = subparsers.add_parser("get", parents=[common_parser], help="Get entity projected state")
 	p_get.add_argument("pit", help="Pit name")
 	p_get.add_argument("id", help="Entity ID")
 	p_get.add_argument("--at", help="Point-in-time timestamp")
@@ -477,49 +480,49 @@ def build_parser() -> argparse.ArgumentParser:
 	p_get.add_argument("--with-deleted", action="store_true", help="Include tombstoned entities")
 
 	# history
-	p_hist = subparsers.add_parser("history", help="Dump immutable fragment history for an entity")
+	p_hist = subparsers.add_parser("history", parents=[common_parser], help="Dump immutable fragment history for an entity")
 	p_hist.add_argument("pit", help="Pit name")
 	p_hist.add_argument("id", help="Entity ID")
 	p_hist.add_argument("--jq", help="Convenience pipe through jq filter")
 
 	# list
-	p_list = subparsers.add_parser("list", help="List active entities in a Pit")
+	p_list = subparsers.add_parser("list", parents=[common_parser], help="List active entities in a Pit")
 	p_list.add_argument("pit", help="Pit name")
 	p_list.add_argument("--json", action="store_true", help="Output JSON array")
 	p_list.add_argument("--jq", help="Convenience pipe through jq filter")
 
 	# put
-	p_put = subparsers.add_parser("put", help="Ingest JSON5 entities from file or stdin pipe")
+	p_put = subparsers.add_parser("put", parents=[common_parser], help="Ingest JSON5 entities from file or stdin pipe")
 	p_put.add_argument("pit", help="Pit name")
 	p_put.add_argument("source", nargs="?", default="-", help="Source file or '-' for stdin")
 
 	# set
-	p_set = subparsers.add_parser("set", help="Set or patch entity with JSON5 payload")
+	p_set = subparsers.add_parser("set", parents=[common_parser], help="Set or patch entity with JSON5 payload")
 	p_set.add_argument("pit", help="Pit name")
 	p_set.add_argument("id", help="Entity ID")
 	p_set.add_argument("payload", help="JSON5 dictionary payload")
 
 	# del
-	p_del = subparsers.add_parser("del", help="Tombstone an entity")
+	p_del = subparsers.add_parser("del", parents=[common_parser], help="Tombstone an entity")
 	p_del.add_argument("pit", help="Pit name")
 	p_del.add_argument("id", help="Entity ID")
 	p_del.add_argument("--by", help="Audited author identity")
 
 	# del-prop
-	p_delprop = subparsers.add_parser("del-prop", help="Tombstone a property path")
+	p_delprop = subparsers.add_parser("del-prop", parents=[common_parser], help="Tombstone a property path")
 	p_delprop.add_argument("pit", help="Pit name")
 	p_delprop.add_argument("id", help="Entity ID")
 	p_delprop.add_argument("property_path", help="Dot-delimited property path")
 
 	# export
-	p_export = subparsers.add_parser("export", help="Export entities as JSON array")
+	p_export = subparsers.add_parser("export", parents=[common_parser], help="Export entities as JSON array")
 	p_export.add_argument("pit", help="Pit name")
 	p_export.add_argument("--out", help="Output file path (default stdout)")
 	p_export.add_argument("--at", help="Project state as of timestamp")
 	p_export.add_argument("--jq", help="Convenience pipe through jq filter")
 
 	# status
-	p_status = subparsers.add_parser("status", help="Inspect Pit directory lease and flags")
+	p_status = subparsers.add_parser("status", parents=[common_parser], help="Inspect Pit directory lease and flags")
 	p_status.add_argument("pit", help="Pit name")
 
 	return parser

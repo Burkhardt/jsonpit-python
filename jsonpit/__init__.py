@@ -18,7 +18,7 @@ try:
 	import importlib.metadata
 	__version__ = importlib.metadata.version("jsonpit")
 except Exception:
-	__version__ = "0.1.1"
+	__version__ = "0.1.2"
 
 __all__ = [
 	"Pit",

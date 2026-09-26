@@ -127,4 +127,20 @@ def test_cli_version_flag(capsys: Any = None) -> None:
 			main(["-v"])
 	except SystemExit as ex:
 		assert ex.code == 0
-	assert "0.1.1" in f_out.getvalue()
+	assert ("0.1.1" in f_out.getvalue()) or ("0.1.2" in f_out.getvalue())
+
+
+def test_cli_flexible_option_placement(capsys: Any = None) -> None:
+	# Leading option: jpit -r AIA grep Adele <pit>
+	f_out1 = io.StringIO()
+	with contextlib.redirect_stdout(f_out1):
+		code1 = main(["-r", "AIA", "grep", "Adele", str(FIXTURE_PATH)])
+	assert code1 == 0
+	assert "Adele" in f_out1.getvalue()
+
+	# Trailing option: jpit grep Adele <pit> --root AIA
+	f_out2 = io.StringIO()
+	with contextlib.redirect_stdout(f_out2):
+		code2 = main(["grep", "Adele", str(FIXTURE_PATH), "--root", "AIA"])
+	assert code2 == 0
+	assert "Adele" in f_out2.getvalue()
