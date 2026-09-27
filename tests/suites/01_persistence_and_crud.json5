@@ -1,0 +1,152 @@
+// Suite 01: Persistence & CRUD Lifecycle Parity
+// Mirrors C# JsonPitPersistenceTests.cs & PitFileTests.cs
+// Exercises bidirectional creation, array-of-arrays storage invariants,
+// multi-fragment history accumulation, C# seed ingestion, and RenameId semantics.
+{
+	Name: "01. Persistence & CRUD Lifecycle Parity",
+	Variables: {
+		RootName: "AIA.ParitySuite.01_Crud",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.01_Crud"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Create Pit & Verify Directory Convention",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Portfolio AAPL '{Ticker: \"AAPL\", Price: 262.77, Exchange: \"NASDAQ\"}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'AAPL' in Pit 'Portfolio'"
+				},
+				{
+					Command: "pits export Portfolio -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"Ticker": "AAPL"',
+						'"Price": 262.77'
+					]
+				}
+			]
+		},
+		{
+			Name: "2. Array-of-Arrays Storage Invariant (Does Not Flatten)",
+			Steps: [
+				{
+					Command: "python3 -c \"import json; data=json.load(open('{PitRoot}/Portfolio/Portfolio.pit')); assert isinstance(data, list) and isinstance(data[0], list), 'Disk format must be array of arrays'; assert data[0][0]['Id'] == 'AAPL'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "3. Multi-Fragment History Accumulation & Sparse Projection",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Portfolio AAPL '{Price: 265.50, Volume: 1200000}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'AAPL' in Pit 'Portfolio'"
+				},
+				{
+					Command: "python3 -c \"import json; data=json.load(open('{PitRoot}/Portfolio/Portfolio.pit')); assert len(data[0]) == 2, f'Expected 2 fragments on disk, found {len(data[0])}'\"",
+					ExpectCode: 0
+				},
+				{
+					Command: "pits export Portfolio -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"Price": 265.5',
+						'"Exchange": "NASDAQ"',
+						'"Volume": 1200000'
+					]
+				}
+			]
+		},
+		{
+			Name: "4. C# pits Ingestion -> Python jpit Query",
+			Steps: [
+				{
+					Command: "echo '[{\"Id\": \"MSFT\", \"Ticker\": \"MSFT\", \"Price\": 420.00, \"Exchange\": \"NASDAQ\"}]' > {PitRoot}/seed_msft.json",
+					ExpectCode: 0
+				},
+				{
+					Command: "pits seed Portfolio --source {PitRoot}/seed_msft.json -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "jpit -r {RootName} get Portfolio MSFT",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "MSFT",
+						Ticker: "MSFT",
+						Price: 420,
+						Exchange: "NASDAQ",
+						Deleted: false
+					}
+				}
+			]
+		},
+		{
+			Name: "5. Key Renaming (RenameId Invariant)",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} rename Portfolio AAPL APPLE",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Renamed entity 'AAPL' -> 'APPLE' in Pit 'Portfolio'"
+				},
+				{
+					Command: "jpit -r {RootName} get Portfolio AAPL",
+					ExpectCode: 1,
+					ExpectStderrContains: "Entity 'AAPL' not found in Pit 'Portfolio'"
+				},
+				{
+					Command: "jpit -r {RootName} history Portfolio AAPL",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Deleted": true'
+				},
+				{
+					Command: "jpit -r {RootName} get Portfolio APPLE",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "APPLE",
+						Exchange: "NASDAQ",
+						Volume: 1200000,
+						Deleted: false
+					}
+				},
+				{
+					Command: "pits export Portfolio -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Id": "APPLE"'
+				},
+				{
+					Command: "python3 -c \"import json; data=json.load(open('{PitRoot}/Portfolio/Portfolio.pit')); ids = [stack[0]['Id'] for stack in data]; assert 'APPLE' in ids and 'AAPL' in ids, f'Ids on disk: {ids}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "6. Entity Deletion (Tombstoning)",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} del Portfolio MSFT",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Tombstoned entity 'MSFT' in Pit 'Portfolio'"
+				},
+				{
+					Command: "jpit -r {RootName} get Portfolio MSFT",
+					ExpectCode: 1,
+					ExpectStderrContains: "Entity 'MSFT' not found in Pit 'Portfolio'"
+				},
+				{
+					Command: "jpit -r {RootName} history Portfolio MSFT",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Deleted": true'
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

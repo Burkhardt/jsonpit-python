@@ -62,6 +62,7 @@ class JsonPitBase:
 		read_only: bool = False,
 		backup: bool = False,
 		unflagged: bool = False,
+		retain_window: bool = False,
 	) -> None:
 		self.pit_dir = Path(pit_dir)
 		self.pit_name = pit_name
@@ -70,6 +71,7 @@ class JsonPitBase:
 		self.read_only = read_only
 		self.backup = backup
 		self.unflagged = unflagged
+		self.retain_window = retain_window
 
 		self._master_flag = MasterFlagFile(self.pit_dir, "Master")
 		self._process_flag: ProcessFlagFile | None = None
@@ -193,6 +195,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		read_only: bool = False,
 		backup: bool = False,
 		unflagged: bool = False,
+		retain_window: bool = False,
 		default_max_count: int = 10,
 	) -> None:
 		super().__init__(
@@ -202,6 +205,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			read_only=read_only,
 			backup=backup,
 			unflagged=unflagged,
+			retain_window=retain_window,
 		)
 		self.default_max_count = default_max_count
 		self._historic_items: dict[str, PitItems] = {}
@@ -263,7 +267,8 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		if self._disposed:
 			return
 		try:
-			self.try_release_process_window()
+			if not self.retain_window:
+				self.try_release_process_window()
 		finally:
 			self._release_path_ownership()
 			self._disposed = True
@@ -280,6 +285,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		read_only: bool = False,
 		backup: bool = False,
 		unflagged: bool = False,
+		retain_window: bool = False,
 		default_max_count: int = 10,
 	) -> Pit:
 		"""
@@ -299,6 +305,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			read_only=read_only,
 			backup=backup,
 			unflagged=unflagged,
+			retain_window=retain_window,
 			default_max_count=default_max_count,
 		)
 
@@ -415,6 +422,30 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		if tombstone.delete(by=by, backdate_100=backdate_100):
 			return self.add(tombstone, refresh_modified=True)
 		return False
+
+	def rename_id(self, old_key: str, new_key: str, by: str | None = None) -> bool:
+		"""
+		Migrates state from old_key to new_key, tombstoning old_key.
+		100% parity with C# Pit.RenameId.
+		"""
+		if not old_key or not new_key or old_key == new_key:
+			return False
+		if self.get(old_key) is None or self.get(new_key, with_deleted=True) is not None:
+			return False
+
+		old_item = self.get(old_key)
+		if old_item is None:
+			return False
+
+		new_data = old_item.to_dict()
+		new_data["Id"] = new_key
+		new_data.pop("Modified", None)
+		new_item = PitItem(new_data)
+
+		with self._locker:
+			deleted = self.delete_item(old_key, by=by)
+			added = self.add(new_item)
+			return deleted and added
 
 	def has_dirty_items(self) -> bool:
 		"""True if any entity fragment in memory has unpersisted modifications."""

@@ -1,0 +1,124 @@
+// Suite 02: Changes, Receipts, and Grace Period Lifecycle
+// Exercises CR041 clean filenames, foreign change file discovery,
+// 7-digit UTC receipt generation, 10-minute cleanup grace periods,
+// and legacy 3-segment hashed change file discovery.
+{
+	Name: "02. Changes, Receipts, and Grace Period Lifecycle",
+	Variables: {
+		RootName: "AIA.ParitySuite.02_Changes",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.02_Changes"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Create Base Pit via Python",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Ledger Entry1 '{Account: \"Operating\", Amount: 1000.0}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Entry1' in Pit 'Ledger'"
+				},
+				{
+					Command: "pits export Ledger -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Account": "Operating"'
+				}
+			]
+		},
+		{
+			Name: "2. Non-Master Peer Plants CR041 Clean Change File",
+			Steps: [
+				{
+					Command: "python3 -c \"from pathlib import Path; from jsonpit.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json, sha256_hex; now = utcnow(); ticks = datetime_to_utc_ticks(now); content = canonical_json([{'Id': 'Entry2', 'Account': 'Reserve', 'Amount': 500.0, 'Modified': format_iso_timestamp(now), 'Deleted': False}]); sha = sha256_hex(content); name = f'{ticks}_Mzansi-peer-4242_{sha}.json'; p = Path('{PitRoot}/Ledger') / name; p.write_text(content, encoding='utf-8')\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "3. C# pits maintain Ingests & Issues 7-Digit UTC Receipt",
+			Steps: [
+				{
+					Command: "python3 -c \"from pathlib import Path; (Path('{PitRoot}/Ledger/Master.flag')).unlink(missing_ok=True)\"",
+					ExpectCode: 0
+				},
+				{
+					Command: "pits maintain Ledger --apply -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "python3 -c \"from pathlib import Path; receipts = list(Path('{PitRoot}/Ledger').glob('*.receipt')); assert len(receipts) == 1, f'Expected 1 receipt, found {receipts}'; content = receipts[0].read_text().strip(); assert content.endswith('Z') and len(content.split('.')[-1]) == 8, f'Timestamp: {content}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "4. 10-Minute Grace Window Enforced (Zero Early Pruning)",
+			Steps: [
+				{
+					Command: "pits maintain Ledger --apply -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "python3 -c \"from pathlib import Path; jsons = [p for p in Path('{PitRoot}/Ledger').glob('*.json') if p.name != 'Ledger.pit']; receipts = list(Path('{PitRoot}/Ledger').glob('*.receipt')); assert len(jsons) == 1 and len(receipts) == 1, f'Pruned prematurely: jsons={jsons}, receipts={receipts}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "5. Grace Expiry Pruning Removes Both Artifacts",
+			Steps: [
+				{
+					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import format_iso_timestamp; r = list(Path('{PitRoot}/Ledger').glob('*.receipt'))[0]; past = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=15); r.write_text(format_iso_timestamp(past), encoding='utf-8')\"",
+					ExpectCode: 0
+				},
+				{
+					Command: "pits maintain Ledger --apply -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "python3 -c \"from pathlib import Path; jsons = [p for p in Path('{PitRoot}/Ledger').glob('*.json') if p.name != 'Ledger.pit']; receipts = list(Path('{PitRoot}/Ledger').glob('*.receipt')); assert len(jsons) == 0 and len(receipts) == 0, f'Expected 0 remaining, found jsons={jsons}, receipts={receipts}'\"",
+					ExpectCode: 0
+				},
+				{
+					Command: "jpit -r {RootName} get Ledger Entry2",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Entry2",
+						Account: "Reserve",
+						Amount: 500,
+						Deleted: false
+					}
+				}
+			]
+		},
+		{
+			Name: "6. Legacy 3-Segment Hashed Change Files Dual Discovery (CR041)",
+			Steps: [
+				{
+					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json; now = utcnow(); ticks = datetime_to_utc_ticks(now); name = f'{ticks}_Mzansi-clean-5555.json'; p = Path('{PitRoot}/Ledger') / name; content = canonical_json([{'Id': 'Entry3', 'Account': 'Treasury', 'Amount': 750.0, 'Modified': format_iso_timestamp(now), 'Deleted': False}]); p.write_text(content, encoding='utf-8')\"",
+					ExpectCode: 0
+				},
+				{
+					Command: "jpit -r {RootName} get Ledger Entry3",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Entry3",
+						Account: "Treasury",
+						Amount: 750,
+						Deleted: false
+					}
+				},
+				{
+					Command: "pits export Ledger -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Account": "Treasury"'
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

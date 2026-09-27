@@ -1,0 +1,126 @@
+// Suite 05: Process Flags, Master Leases, and Concurrency Parity
+// Mirrors C# MasterTicketTests.cs & MultiProcessConcurrencyTests.cs
+// Exercises process flag cleanup on exit, --retain-window, master ticket ownership,
+// non-master change-file fallback under active foreign lease, and lease takeover after expiry.
+{
+	Name: "05. Process Flags, Master Leases, and Concurrency Parity",
+	Variables: {
+		RootName: "AIA.ParitySuite.05_Flags",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.05_Flags"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Clean Process Flag Cleanup on Exit (Rule 5)",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Coordination Item1 '{Val: 100}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Item1' in Pit 'Coordination'"
+				},
+				{
+					// Master.flag must exist, but owned process flag must be cleanly deleted
+					Command: "python3 -c \"from pathlib import Path; p = Path('{PitRoot}/Coordination'); assert (p / 'Master.flag').exists(); proc_flags = [f for f in p.glob('*.flag') if f.name != 'Master.flag']; assert len(proc_flags) == 0, f'Found unreleased flags: {proc_flags}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "2. Retain Window Preserves Process Flag (--retain-window)",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Coordination Item1 '{Val: 200}' --retain-window",
+					ExpectCode: 0
+				},
+				{
+					// Owned process flag must be preserved on disk
+					Command: "python3 -c \"from pathlib import Path; p = Path('{PitRoot}/Coordination'); proc_flags = [f for f in p.glob('*.flag') if f.name != 'Master.flag']; assert len(proc_flags) == 1, f'Expected 1 retained flag, got {proc_flags}'\"",
+					ExpectCode: 0
+				},
+				{
+					// Clean up the retained flag for subsequent test steps
+					Command: "python3 -c \"from pathlib import Path; p = Path('{PitRoot}/Coordination'); [f.unlink() for f in p.glob('*.flag') if f.name != 'Master.flag']\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "3. Master Ticket Ownership Recorded in Master.flag",
+			Steps: [
+				{
+					Command: "python3 -c \"from pathlib import Path; content = (Path('{PitRoot}/Coordination/Master.flag')).read_text(); assert '|' in content; assert len(content.split('|')) == 2, f'Invalid flag format: {content}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "4. Active Foreign Lease Forces Change-File Fallback",
+			Steps: [
+				{
+					// Plant active foreign master lease and foreign process window
+					Command: "python3 -c \"from pathlib import Path; from jsonpit.canonical import utcnow, format_iso_timestamp; p = Path('{PitRoot}/Coordination'); now_str = format_iso_timestamp(utcnow()); (p / 'Master.flag').write_text(f'ForeignBox-remoteapp-888888|{now_str}', encoding='utf-8'); (p / 'ForeignBox-remoteapp-888888.flag').write_text(f'ForeignBox:remoteapp:888888|{now_str}', encoding='utf-8')\"",
+					ExpectCode: 0
+				},
+				{
+					// Mutation must fall back to change file because foreign lease is active
+					Command: "jpit -r {RootName} set Coordination Item2 '{Val: 999}'",
+					ExpectCode: 0
+				},
+				{
+					// Verify change file was created
+					Command: "python3 -c \"from pathlib import Path; change_files = [p for p in Path('{PitRoot}/Coordination').glob('*.json') if p.name != 'Coordination.pit']; assert len(change_files) >= 1, f'Expected change file, found: {change_files}'\"",
+					ExpectCode: 0
+				},
+				{
+					// Verify master pit was NOT directly overwritten
+					Command: "python3 -c \"import json; data=json.load(open('{PitRoot}/Coordination/Coordination.pit')); ids = [stack[0]['Id'] for stack in data]; assert 'Item2' not in ids, f'Item2 should be deferred in change file, found in pit: {ids}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "5. Expired Foreign Lease Allows Master Takeover & Merges Changes",
+			Steps: [
+				{
+					// Backdate foreign lease and window by 90 seconds (past 60s lease timeout)
+					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import utcnow, format_iso_timestamp; p = Path('{PitRoot}/Coordination'); past = format_iso_timestamp(utcnow() - datetime.timedelta(seconds=90)); (p / 'Master.flag').write_text(f'ForeignBox-remoteapp-888888|{past}', encoding='utf-8'); (p / 'ForeignBox-remoteapp-888888.flag').write_text(f'ForeignBox:remoteapp:888888|{past}', encoding='utf-8')\"",
+					ExpectCode: 0
+				},
+				{
+					// Next mutation takes over master, folds Item2 change file, and saves Item3
+					Command: "jpit -r {RootName} set Coordination Item3 '{Val: 300}'",
+					ExpectCode: 0
+				},
+				{
+					// Master.flag now belongs to this process, not foreign 888888
+					Command: "python3 -c \"from pathlib import Path; content = (Path('{PitRoot}/Coordination/Master.flag')).read_text(); assert '888888' not in content, f'Lease was not acquired: {content}'\"",
+					ExpectCode: 0
+				},
+				{
+					// Both Item2 and Item3 must now be folded into Coordination.pit
+					Command: "python3 -c \"import json; data=json.load(open('{PitRoot}/Coordination/Coordination.pit')); ids = [stack[0]['Id'] for stack in data]; assert 'Item2' in ids and 'Item3' in ids, f'Expected Item2 and Item3 in pit, got: {ids}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "6. Cross-Engine Verification via C# pits",
+			Steps: [
+				{
+					Command: "pits export Coordination -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"Val": 200',
+						'"Val": 999',
+						'"Val": 300'
+					]
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

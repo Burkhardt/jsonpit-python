@@ -1,0 +1,115 @@
+// Suite 06: Split-Master Recovery & Conflict Resolution Parity
+// Mirrors C# SplitMasterRecoveryTests.cs & EqualTimestampOrderingTests.cs
+// Exercises simulated cloud partition healing, multi-branch concurrent change merging,
+// newest-first property preservation across branches, and cross-engine projection parity.
+{
+	Name: "06. Split-Master Recovery & Conflict Resolution Parity",
+	Variables: {
+		RootName: "AIA.ParitySuite.06_Recovery",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.06_Recovery"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Create Baseline Entity",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Assets Server1 '{Host: \"srv-01\", Status: \"Online\", Cores: 32}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Server1' in Pit 'Assets'"
+				},
+				{
+					Command: "pits export Assets -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"Host": "srv-01"',
+						'"Status": "Online"',
+						'"Cores": 32'
+					]
+				}
+			]
+		},
+		{
+			Name: "2. Partition Branch A Writes Sparse Changes",
+			Steps: [
+				{
+					// Branch A updates Status to Maintenance and adds MemoryGB: 128
+					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json; t_a = utcnow() + datetime.timedelta(seconds=1); ticks = datetime_to_utc_ticks(t_a); name = f'{ticks}_MachineA-agent-1111.json'; p = Path('{PitRoot}/Assets') / name; content = canonical_json([{'Id': 'Server1', 'Status': 'Maintenance', 'MemoryGB': 128, 'Modified': format_iso_timestamp(t_a), 'Deleted': False}]); p.write_text(content, encoding='utf-8')\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "3. Partition Branch B Writes Newer Sparse Changes & Second Entity",
+			Steps: [
+				{
+					// Branch B (newer timestamp) updates Status back to Online, adds GPU: H100, and adds Server2
+					Command: "python3 -c \"import datetime; from pathlib import Path; from jsonpit.canonical import utcnow, datetime_to_utc_ticks, format_iso_timestamp, canonical_json; t_b = utcnow() + datetime.timedelta(seconds=2); ticks = datetime_to_utc_ticks(t_b); name = f'{ticks}_MachineB-agent-2222.json'; p = Path('{PitRoot}/Assets') / name; content = canonical_json([{'Id': 'Server1', 'Status': 'Online', 'GPU': 'H100', 'Modified': format_iso_timestamp(t_b), 'Deleted': False}, {'Id': 'Server2', 'Host': 'srv-02', 'Status': 'Online', 'Modified': format_iso_timestamp(t_b), 'Deleted': False}]); p.write_text(content, encoding='utf-8')\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "4. Partition Healing & Deterministic Merge via Python jpit",
+			Steps: [
+				{
+					// Python jpit merges both branches: Status: Online (B wins), MemoryGB: 128 (A preserved), GPU: H100 (B added), Cores: 32 (Baseline preserved)
+					Command: "jpit -r {RootName} get Assets Server1",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Server1",
+						Host: "srv-01",
+						Status: "Online",
+						Cores: 32,
+						MemoryGB: 128,
+						GPU: "H100",
+						Deleted: false
+					}
+				},
+				{
+					// Second entity from Branch B is also present
+					Command: "jpit -r {RootName} get Assets Server2",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Server2",
+						Host: "srv-02",
+						Status: "Online",
+						Deleted: false
+					}
+				}
+			]
+		},
+		{
+			Name: "5. History Stack Accumulation Across Partitions",
+			Steps: [
+				{
+					// Server1 must retain all 3 fragments in its history stack
+					Command: "python3 -c \"from pathlib import Path; import subprocess, json; res = subprocess.run(['jpit', '-r', '{RootName}', 'history', 'Assets', 'Server1'], capture_output=True, text=True); assert res.returncode == 0; frags = json.loads(res.stdout); assert len(frags) == 3, f'Expected 3 history fragments, got {len(frags)}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "6. Cross-Engine Verification via C# pits",
+			Steps: [
+				{
+					Command: "pits export Assets -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"Host": "srv-01"',
+						'"Status": "Online"',
+						'"Cores": 32',
+						'"MemoryGB": 128',
+						'"GPU": "H100"',
+						'"Host": "srv-02"'
+					]
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

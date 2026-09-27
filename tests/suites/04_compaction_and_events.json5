@@ -1,0 +1,109 @@
+// Suite 04: Compaction, Event Archiving, and Audit Parity
+// Mirrors C# EventArchiveMaintenanceTests.cs
+// Exercises loose event discovery under Events/, preview vs apply compaction,
+// immutable zip creation with Events.metadata.json, and cross-engine audit.
+{
+	Name: "04. Compaction, Event Archiving, and Audit Parity",
+	Variables: {
+		RootName: "AIA.ParitySuite.04_Events",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.04_Events"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Create Base Pit via Python",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Activity Act1 '{Type: \"Task\", Status: \"InProgress\"}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Act1' in Pit 'Activity'"
+				},
+				{
+					Command: "pits export Activity -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Type": "Task"'
+				}
+			]
+		},
+		{
+			Name: "2. Plant Loose Recovery Events in Events Directory",
+			Steps: [
+				{
+					Command: "python3 -c \"import json, uuid; from pathlib import Path; from jsonpit.canonical import parse_iso_timestamp, datetime_to_utc_ticks, format_iso_timestamp, canonical_json, sha256_hex; ev_dir = Path('{PitRoot}/Activity/Events'); ev_dir.mkdir(parents=True, exist_ok=True); t1 = parse_iso_timestamp('2026-09-20T10:00:00Z'); t2 = parse_iso_timestamp('2026-09-20T11:30:00Z'); \nfor t, msg in [(t1, 'first recovery event'), (t2, 'second recovery event')]:\n    ticks = datetime_to_utc_ticks(t)\n    content = canonical_json({'EventId': str(uuid.uuid4()), 'UtcTime': format_iso_timestamp(t), 'UtcTicks': ticks, 'Stage': 'Completed', 'Message': msg, 'Originator': 'TestMachine-tests-1'})\n    sha = sha256_hex(content)\n    (ev_dir / f'{ticks}_TestMachine-tests-1_Completed_{sha}.event').write_text(content, encoding='utf-8')\"",
+					ExpectCode: 0
+				},
+				{
+					Command: "python3 -c \"from pathlib import Path; events = list(Path('{PitRoot}/Activity/Events').glob('*.event')); assert len(events) == 2, f'Expected 2 events, got {events}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "3. Preview Compaction Reports Range Without Mutation",
+			Steps: [
+				{
+					Command: "pits maintain Activity --archive-events -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectJson: {
+						Applied: false,
+						EventFilesObserved: 2,
+						EventFilesEligible: 2,
+						EventArchiveName: "Events_20260920-1000_to_20260920-1130.zip"
+					}
+				},
+				{
+					// Loose events must remain untouched
+					Command: "python3 -c \"from pathlib import Path; events = list(Path('{PitRoot}/Activity/Events').glob('*.event')); zips = list(Path('{PitRoot}/Activity/Events').glob('*.zip')); assert len(events) == 2 and len(zips) == 0\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "4. Apply Compaction Creates Zip Archive & Retires Loose Events",
+			Steps: [
+				{
+					Command: "pits maintain Activity --archive-events --apply -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectJson: {
+						Applied: true,
+						EventArchivesCreated: 1,
+						EventFilesArchived: 2,
+						EventFilesRemoved: 2
+					}
+				},
+				{
+					// Loose events must be retired and exactly 1 zip must exist
+					Command: "python3 -c \"from pathlib import Path; events = list(Path('{PitRoot}/Activity/Events').glob('*.event')); zips = list(Path('{PitRoot}/Activity/Events').glob('*.zip')); assert len(events) == 0 and len(zips) == 1, f'Events: {events}, Zips: {zips}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "5. Verify Zip Contents & Events.metadata.json",
+			Steps: [
+				{
+					Command: "python3 -c \"import zipfile, json; from pathlib import Path; zips = list(Path('{PitRoot}/Activity/Events').glob('*.zip')); zf = zipfile.ZipFile(zips[0]); names = zf.namelist(); assert 'Events.metadata.json' in names; meta = json.loads(zf.read('Events.metadata.json')); assert meta['TimeBasis'] == 'UTC' and meta['EventCount'] == 2; event_entries = [n for n in names if n.endswith('.event')]; assert len(event_entries) == 2\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "6. Cross-Engine Audit Reads Events from Zip Archive",
+			Steps: [
+				{
+					Command: "pits audit Activity -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						"first recovery event",
+						"second recovery event"
+					]
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

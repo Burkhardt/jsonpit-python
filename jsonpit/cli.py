@@ -340,7 +340,12 @@ def cmd_put(args: argparse.Namespace) -> int:
 			)
 			return 1
 
-	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
+	with Pit.open(
+		args.pit,
+		cloud=args.cloud,
+		root=args.root,
+		retain_window=getattr(args, "retain_window", False),
+	) as pit:
 		count = 0
 		for raw_obj in items_to_add:
 			item_id = raw_obj.get("Id") or raw_obj.get("id") or raw_obj.get("Name")
@@ -369,7 +374,12 @@ def cmd_set(args: argparse.Namespace) -> int:
 		)
 		return 1
 
-	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
+	with Pit.open(
+		args.pit,
+		cloud=args.cloud,
+		root=args.root,
+		retain_window=getattr(args, "retain_window", False),
+	) as pit:
 		existing = pit.get(args.id)
 		if existing:
 			existing.set_property(payload)
@@ -385,7 +395,12 @@ def cmd_set(args: argparse.Namespace) -> int:
 
 def cmd_delete(args: argparse.Namespace) -> int:
 	"""Tombstones an entity with audited author note and 100s backdating."""
-	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
+	with Pit.open(
+		args.pit,
+		cloud=args.cloud,
+		root=args.root,
+		retain_window=getattr(args, "retain_window", False),
+	) as pit:
 		success = pit.delete_item(args.id, by=args.by)
 		if not success:
 			sys.stderr.write(f"[jpit] Entity '{args.id}' is already deleted or not found.\n")
@@ -404,7 +419,12 @@ def cmd_delete_prop(args: argparse.Namespace) -> int:
 		)
 		return 1
 
-	with Pit.open(args.pit, cloud=args.cloud, root=args.root) as pit:
+	with Pit.open(
+		args.pit,
+		cloud=args.cloud,
+		root=args.root,
+		retain_window=getattr(args, "retain_window", False),
+	) as pit:
 		item = pit.get(args.id)
 		if item is None:
 			sys.stderr.write(f"[jpit] Entity '{args.id}' not found.\n")
@@ -413,6 +433,26 @@ def cmd_delete_prop(args: argparse.Namespace) -> int:
 		pit.add(item)
 
 	print(f"[jpit] Tombstoned property '{args.property_path}' on entity '{args.id}'.")
+	return 0
+
+
+def cmd_rename(args: argparse.Namespace) -> int:
+	"""Migrates state from old_id to new_id and tombstones old_id."""
+	with Pit.open(
+		args.pit,
+		cloud=args.cloud,
+		root=args.root,
+		retain_window=getattr(args, "retain_window", False),
+	) as pit:
+		success = pit.rename_id(args.old_id, args.new_id, by=args.by)
+		if not success:
+			sys.stderr.write(
+				f"[jpit] Failed to rename '{args.old_id}' to '{args.new_id}' "
+				f"(check if '{args.old_id}' exists or '{args.new_id}' is already taken).\n"
+			)
+			return 1
+
+	print(f"[jpit] Renamed entity '{args.old_id}' -> '{args.new_id}' in Pit '{args.pit}'.")
 	return 0
 
 
@@ -493,6 +533,12 @@ def build_parser() -> argparse.ArgumentParser:
 		default=argparse.SUPPRESS,
 		help="Root folder / tenant (e.g. AIA, AfricaStage)",
 	)
+	common_parser.add_argument(
+		"--retain-window",
+		action="store_true",
+		default=False,
+		help="Keep the activity window until timeout (CR024)",
+	)
 
 	parser = argparse.ArgumentParser(
 		prog="jpit",
@@ -563,6 +609,13 @@ def build_parser() -> argparse.ArgumentParser:
 	p_delprop.add_argument("id", help="Entity ID")
 	p_delprop.add_argument("property_path", help="Dot-delimited property path")
 
+	# rename
+	p_rename = subparsers.add_parser("rename", parents=[common_parser], help="Migrate entity to new ID and tombstone old ID")
+	p_rename.add_argument("pit", help="Pit name")
+	p_rename.add_argument("old_id", help="Current entity ID")
+	p_rename.add_argument("new_id", help="New entity ID")
+	p_rename.add_argument("--by", help="Audited author identity")
+
 	# export
 	p_export = subparsers.add_parser("export", parents=[common_parser], help="Export entities as JSON array")
 	p_export.add_argument("pit", help="Pit name")
@@ -595,6 +648,7 @@ def main(argv: list[str] | None = None) -> int:
 		"set": cmd_set,
 		"del": cmd_delete,
 		"del-prop": cmd_delete_prop,
+		"rename": cmd_rename,
 		"export": cmd_export,
 		"status": cmd_status,
 	}

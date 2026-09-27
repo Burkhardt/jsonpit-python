@@ -1,0 +1,178 @@
+// Suite 03: Tombstones, Property Projections, and Time-Travel Parity
+// Mirrors C# DeletePropertyProjectionTests.cs & PitSnapshotTests.cs
+// Exercises deep nested property tombstones, property re-introduction,
+// entity tombstoning, and cross-engine point-in-time (--at) projections.
+{
+	Name: "03. Tombstones, Property Projections, and Time-Travel Parity",
+	Variables: {
+		RootName: "AIA.ParitySuite.03_Tombstones",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite.03_Tombstones"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Create Entity with Nested Properties via Python",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Employees Nomsa '{Name: \"Nomsa\", Role: \"Architect\", Profile: {City: \"Durban\", Tier: \"Senior\", Active: true}}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Nomsa' in Pit 'Employees'"
+				},
+				{
+					Command: "pits export Employees -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"Role": "Architect"',
+						'"City": "Durban"',
+						'"Tier": "Senior"'
+					]
+				}
+			]
+		},
+		{
+			Name: "2. Nested Path Property Deletion via Python (del-prop)",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} del-prop Employees Nomsa Profile.Tier",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Tombstoned property 'Profile.Tier' on entity 'Nomsa'"
+				},
+				{
+					Command: "jpit -r {RootName} get Employees Nomsa",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Nomsa",
+						Name: "Nomsa",
+						Role: "Architect",
+						Profile: {
+							City: "Durban",
+							Active: true
+						},
+						Deleted: false
+					}
+				},
+				{
+					Command: "pits export Employees -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: [
+						'"City": "Durban"',
+						'"Active": true'
+					]
+				}
+			]
+		},
+		{
+			Name: "3. Top-Level Property Deletion via C# pits",
+			Steps: [
+				{
+					Command: "pits delete-property Employees Nomsa Role -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "jpit -r {RootName} get Employees Nomsa",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Nomsa",
+						Name: "Nomsa",
+						Profile: {
+							City: "Durban",
+							Active: true
+						},
+						Deleted: false
+					}
+				}
+			]
+		},
+		{
+			Name: "4. Re-introducing a Deleted Property",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Employees Nomsa '{Role: \"Lead Architect\"}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Nomsa' in Pit 'Employees'"
+				},
+				{
+					Command: "pits export Employees -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Role": "Lead Architect"'
+				},
+				{
+					Command: "jpit -r {RootName} get Employees Nomsa",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Nomsa",
+						Role: "Lead Architect",
+						Deleted: false
+					}
+				}
+			]
+		},
+		{
+			Name: "5. Time-Travel Projection (--at)",
+			Steps: [
+				{
+					// Save snapshot timestamp to file
+					Command: "python3 -c \"import time; from pathlib import Path; from jsonpit.canonical import utcnow, format_iso_timestamp; time.sleep(0.05); ts = format_iso_timestamp(utcnow()); (Path('{PitRoot}') / 'snap_time.txt').write_text(ts, encoding='utf-8')\"",
+					ExpectCode: 0
+				},
+				{
+					// Mutate state after snapshot
+					Command: "jpit -r {RootName} set Employees Nomsa '{Role: \"Distinguished Fellow\"}'",
+					ExpectCode: 0
+				},
+				{
+					// Verify current state is mutated
+					Command: "jpit -r {RootName} get Employees Nomsa",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Nomsa",
+						Role: "Distinguished Fellow"
+					}
+				},
+				{
+					// Verify point-in-time projection via Python jpit
+					Command: "python3 -c \"from pathlib import Path; import subprocess; ts = (Path('{PitRoot}') / 'snap_time.txt').read_text().strip(); res = subprocess.run(['jpit', '-r', '{RootName}', 'get', 'Employees', 'Nomsa', '--at', ts], capture_output=True, text=True); assert res.returncode == 0; assert 'Lead Architect' in res.stdout, f'Expected Lead Architect, got: {res.stdout}'\"",
+					ExpectCode: 0
+				},
+				{
+					// Verify point-in-time projection via C# pits
+					Command: "python3 -c \"from pathlib import Path; import subprocess; ts = (Path('{PitRoot}') / 'snap_time.txt').read_text().strip(); res = subprocess.run(['pits', 'export', 'Employees', '-r', '{PitRoot}', '--json', '--at', ts, '-n'], capture_output=True, text=True); assert res.returncode == 0; assert 'Lead Architect' in res.stdout, f'Expected Lead Architect, got: {res.stdout}'\"",
+					ExpectCode: 0
+				}
+			]
+		},
+		{
+			Name: "6. Whole Entity Tombstone & Historical Retrieval",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} del Employees Nomsa",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Tombstoned entity 'Nomsa' in Pit 'Employees'"
+				},
+				{
+					Command: "jpit -r {RootName} get Employees Nomsa",
+					ExpectCode: 1,
+					ExpectStderrContains: "Entity 'Nomsa' not found in Pit 'Employees'"
+				},
+				{
+					Command: "jpit -r {RootName} get Employees Nomsa --with-deleted",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Nomsa",
+						Deleted: true
+					}
+				},
+				{
+					// Time-travel before deletion still projects live entity
+					Command: "python3 -c \"import json, subprocess; from pathlib import Path; ts = (Path('{PitRoot}') / 'snap_time.txt').read_text().strip(); res = subprocess.run(['jpit', '-r', '{RootName}', 'get', 'Employees', 'Nomsa', '--at', ts], capture_output=True, text=True); assert res.returncode == 0; d = json.loads(res.stdout); assert d['Id'] == 'Nomsa' and d['Role'] == 'Lead Architect' and d['Deleted'] is False\"",
+					ExpectCode: 0
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

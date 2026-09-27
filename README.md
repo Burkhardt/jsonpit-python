@@ -5,7 +5,7 @@
 
 `jsonpit` stores JsonPits—JSON files with an append-only value history—across machines and servers coordinated over synchronized Cloud Drives (`OneDrive`, `Dropbox`, `GoogleDrive`, `ICloudDrive`) without requiring a centralized database daemon.
 
-It is the authoritative Python implementation of the JsonPit protocol, designed to operate in full, zero-deviation parity alongside the C# `JsonPit` engine and the `pits` CLI toolchain in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits` CLI in [RAIkeep](https://github.com/Burkhardt/RAIkeep). `jsonpit` is the pure-Python implementation engineered for 100% behavioral and physical storage parity with zero deviation.
 
 ---
 
@@ -115,12 +115,23 @@ Person/
 
 ## Development & Testing
 
-```bash
-# Run pytest test suite:
-pytest
+### Cross-Library Differential Parity Battery
 
-# Type checking (strict):
-mypy jsonpit
+To ensure 100% interoperability with C# `JsonPit`, this repository includes a dedicated **Differential Cross-Testing Suite** (`tests/suites/*.json5` & `tests/sequence_runner.py`). The test harness orchestrates bidirectional interaction between the Python runtime (`jpit`) and the C# CLI binary (`pits`):
+
+- **Python Writes $\rightarrow$ C# Validates:** Python writes `.pit` snapshots and sparse changes; C# `pits export` and `pits verify` assert physical byte formatting, timestamp precision, and schema invariants.
+- **C# Writes $\rightarrow$ Python Validates:** C# `pits seed`, `delete-property`, and `maintain` mutate state; Python `jpit get`, `history`, and `PitStore` verify projections and receipt mechanics.
+- **7 Parity Suites (41 Cross-Engine Steps):** Covers persistence CRUD, CR041 clean change files, receipt grace periods, nested property tombstones, compaction/events archiving, process flag lifecycles, and split-master partition recovery.
+
+For full suite descriptions, architecture diagrams, and certification tables, see:  
+👉 **[`doc/CROSS_ENGINE_PARITY_SPECIFICATION.md`](doc/CROSS_ENGINE_PARITY_SPECIFICATION.md)**
+
+```bash
+# Run the full test battery (Unit Tests + 7 Cross-Engine Parity Suites):
+python3 tests/run_all.py
+
+# Run a specific declarative parity suite directly:
+python3 -m tests.sequence_runner tests/suites/01_persistence_and_crud.json5
 ```
 
 ---
