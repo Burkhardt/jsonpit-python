@@ -9,6 +9,17 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
+## Cross-Tool & Cross-Language Version Alignment (`v4.4.0`)
+
+`jsonpit` and the `jpit` CLI are version-synchronized to **`v4.4.0`** in direct lockstep with C# `JsonPit` and `pits 4.4.0` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+
+### Why Harmonized Versioning is Essential:
+- **Instant Compatibility Clarity:** Operators, DevOps pipelines, and autonomous AI agents immediately know whether `jpit` and `pits` share the exact same distributed protocol revision. If both tools report `4.4.x`, they guarantee identical master leasing rules, receipt mechanisms, 7-digit UTC timestamp parsing, and CR041 clean change file conventions.
+- **Elimination of Multi-Language Matrix Confusion:** In heterogeneous environments (e.g. C# backend daemons paired with Python agent orchestrators and data science tooling), unified SemVer tags eliminate complex cross-compatibility lookup tables.
+- **Joint Protocol Governance:** Architectural changes (such as CR040 anti-Read-Modify-Write rules and CR041 clean change file formatting) are certified across both languages under the exact same version milestone before release.
+
+---
+
 ## Key Features
 
 - **The Persistence Fabric for AI Agents:** Autonomous agents running across macOS desktop apps, backend servers, and web runtimes synchronize memory and living state across shared cloud drives without managing database servers, connection pools, or cloud credentials.
