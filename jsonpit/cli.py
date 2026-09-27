@@ -597,14 +597,24 @@ def build_parser() -> argparse.ArgumentParser:
 	p_set.add_argument("id", help="Entity ID")
 	p_set.add_argument("payload", help="JSON5 dictionary payload")
 
-	# del
-	p_del = subparsers.add_parser("del", parents=[common_parser], help="Tombstone an entity")
+	# del / delete-item
+	p_del = subparsers.add_parser(
+		"del",
+		aliases=["delete-item", "delete"],
+		parents=[common_parser],
+		help="Tombstone an entity (aliases: delete-item, delete)",
+	)
 	p_del.add_argument("pit", help="Pit name")
 	p_del.add_argument("id", help="Entity ID")
 	p_del.add_argument("--by", help="Audited author identity")
 
-	# del-prop
-	p_delprop = subparsers.add_parser("del-prop", parents=[common_parser], help="Tombstone a property path")
+	# del-prop / delete-property
+	p_delprop = subparsers.add_parser(
+		"del-prop",
+		aliases=["delete-property"],
+		parents=[common_parser],
+		help="Tombstone a property path (alias: delete-property)",
+	)
 	p_delprop.add_argument("pit", help="Pit name")
 	p_delprop.add_argument("id", help="Entity ID")
 	p_delprop.add_argument("property_path", help="Dot-delimited property path")
@@ -647,7 +657,10 @@ def main(argv: list[str] | None = None) -> int:
 		"put": cmd_put,
 		"set": cmd_set,
 		"del": cmd_delete,
+		"delete": cmd_delete,
+		"delete-item": cmd_delete,
 		"del-prop": cmd_delete_prop,
+		"delete-property": cmd_delete_prop,
 		"rename": cmd_rename,
 		"export": cmd_export,
 		"status": cmd_status,
