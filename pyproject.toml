@@ -39,6 +39,13 @@ dev = [
 [tool.hatch.build.targets.wheel]
 packages = ["jsonpit"]
 
+[tool.hatch.build.targets.sdist]
+only-include = [
+	"jsonpit",
+	"README.md",
+	"pyproject.toml",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
