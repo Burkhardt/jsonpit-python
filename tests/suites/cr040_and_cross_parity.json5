@@ -1,0 +1,90 @@
+// Declarative Cross-Engine Parity & CR040 Test Suite
+// Exercises bidirectional interaction between Python jpit and C# pits.
+{
+	Name: "CR040 & Cross-Engine Parity Suite",
+	Variables: {
+		RootName: "AIA.ParitySuite",
+		PitRoot: "/Users/RSB/Library/CloudStorage/OneDrive/OneDriveData/AIA.ParitySuite"
+	},
+	Construct: [
+		"rm -rf {PitRoot}"
+	],
+	Tests: [
+		{
+			Name: "1. Python jpit creates sparse entity -> C# pits reads & exports",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Jazz Sipho '{Role: \"Musician\", Status: \"Active\", Coach: \"Soccer\"}'",
+					ExpectCode: 0,
+					ExpectStdoutContains: "Updated entity 'Sipho' in Pit 'Jazz'"
+				},
+				{
+					Command: "pits export Jazz -r {PitRoot} --json -n",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Role": "Musician"'
+				}
+			]
+		},
+		{
+			Name: "2. C# pits deletes property -> Python jpit confirms projection",
+			Steps: [
+				{
+					Command: "pits delete-property Jazz Sipho Coach -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "jpit -r {RootName} get Jazz Sipho",
+					ExpectCode: 0,
+					ExpectJson: {
+						Id: "Sipho",
+						Role: "Musician",
+						Status: "Active",
+						Deleted: false
+					}
+				}
+			]
+		},
+		{
+			Name: "3. CR040 Invariant: jpit rejects manual Modified payload",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Jazz Sipho '{Role: \"Composer\", Modified: \"2026-09-26T23:26:42Z\"}'",
+					ExpectCode: 1,
+					ExpectStderrContains: "[jpit] Error: Cannot manually update protected attribute 'Modified'"
+				}
+			]
+		},
+		{
+			Name: "4. CR040 Invariant: jpit rejects manual Deleted payload",
+			Steps: [
+				{
+					Command: "jpit -r {RootName} set Jazz Sipho '{Deleted: true}'",
+					ExpectCode: 1,
+					ExpectStderrContains: "[jpit] Error: Cannot manually update protected attribute 'Deleted'"
+				}
+			]
+		},
+		{
+			Name: "5. Cross-Engine Deletion: pits deletes item -> jpit verifies 404 & history",
+			Steps: [
+				{
+					Command: "pits delete-item Jazz Sipho -r {PitRoot} -n",
+					ExpectCode: 0
+				},
+				{
+					Command: "jpit -r {RootName} get Jazz Sipho",
+					ExpectCode: 1,
+					ExpectStderrContains: "Entity 'Sipho' not found in Pit 'Jazz'"
+				},
+				{
+					Command: "jpit -r {RootName} history Jazz Sipho",
+					ExpectCode: 0,
+					ExpectStdoutContains: '"Deleted": true'
+				}
+			]
+		}
+	],
+	Destruct: [
+		"rm -rf {PitRoot}"
+	]
+}

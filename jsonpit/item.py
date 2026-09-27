@@ -19,7 +19,7 @@ from .canonical import (
 	parse_iso_timestamp,
 	utcnow,
 )
-from .exceptions import TombstoneError
+from .exceptions import ProtectedAttributeError, TombstoneError
 
 
 class TimestampedValue:
@@ -224,13 +224,26 @@ class PitItem(MutableMapping[str, Any]):
 		"""
 		Sets or merges properties from a dictionary or JSON string.
 		Automatically resets Deleted to False and marks the entity dirty.
+		CR040: Rejects any attempt to manually update protected lifecycle attributes.
 		"""
 		if isinstance(patch, str):
 			parsed = json.loads(patch)
 			if not isinstance(parsed, dict):
 				raise ValueError("set_property patch string must parse to a JSON object")
-			return self.extend_with(parsed)
-		return self.extend_with(patch)
+			patch_dict = parsed
+		elif isinstance(patch, dict):
+			patch_dict = patch
+		else:
+			raise ValueError("set_property patch must be a dictionary or JSON string")
+
+		for k in patch_dict:
+			if k.lower() in ("modified", "deleted"):
+				raise ProtectedAttributeError(
+					f"Cannot manually update protected attribute '{k}'. "
+					"Use sparse properties only, and use delete() to tombstone."
+				)
+
+		return self.extend_with(patch_dict)
 
 	def delete_property(self, property_name: str) -> None:
 		"""

@@ -25,3 +25,7 @@ class PitInstanceConflictError(PitConcurrencyError):
 
 class TombstoneError(JsonPitError):
 	"""Raised when attempting an invalid operation on a tombstoned property or item."""
+
+
+class ProtectedAttributeError(JsonPitError, ValueError):
+	"""Raised when attempting to manually mutate or inject protected lifecycle attributes (Modified, Deleted, Id)."""

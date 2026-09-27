@@ -25,6 +25,7 @@ def run_suite() -> int:
 	import tests.test_equal_timestamp_ordering as t_equal
 	import tests.test_master_ticket as t_master
 	import tests.test_pit_item as t_item
+	import tests.test_sequence_suites as t_seq
 
 	modules = [
 		("test_canonical", t_canon),
@@ -35,6 +36,7 @@ def run_suite() -> int:
 		("test_master_ticket", t_master),
 		("test_change_file", t_change),
 		("test_cli", t_cli),
+		("test_sequence_suites", t_seq),
 	]
 
 	total = 0

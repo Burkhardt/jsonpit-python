@@ -517,14 +517,21 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 				payload = ChangeFile.read_validated(cf)
 				if payload is None:
 					continue
-				for history_row in payload:
-					for raw_frag in history_row:
-						if isinstance(raw_frag, dict):
-							item = PitItem(raw_frag, invalidate=False)
-							current = self._historic_items.get(item.id) or PitItems.create(
-								item.id, self.default_max_count
-							)
-							self._historic_items[item.id] = current.push(item)
+				for entry in payload:
+					if isinstance(entry, dict):
+						item = PitItem(entry, invalidate=False)
+						current = self._historic_items.get(item.id) or PitItems.create(
+							item.id, self.default_max_count
+						)
+						self._historic_items[item.id] = current.push(item)
+					elif isinstance(entry, list):
+						for raw_frag in entry:
+							if isinstance(raw_frag, dict):
+								item = PitItem(raw_frag, invalidate=False)
+								current = self._historic_items.get(item.id) or PitItems.create(
+									item.id, self.default_max_count
+								)
+								self._historic_items[item.id] = current.push(item)
 				merged_entries.append((cf, payload))
 				merged_count += 1
 

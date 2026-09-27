@@ -19,14 +19,23 @@ def test_change_file_name_round_trip() -> None:
 	identity = "Nkosikazi-pits-59346"
 	sha = "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
 
-	name = ChangeFile.compose_name(now, identity, sha)
-	parsed = ChangeFile.try_parse_name(name)
-	assert parsed is not None
+	# CR041 clean format: {ticks}_{identity}
+	clean_name = ChangeFile.compose_name(now, identity)
+	clean_parsed = ChangeFile.try_parse_name(clean_name)
+	assert clean_parsed is not None
+	ticks_c, id_c, sha_c = clean_parsed
+	assert id_c == identity
+	assert sha_c is None
+	assert ChangeFile.identity_of(clean_name) == identity
 
-	ticks, parsed_id, parsed_sha = parsed
-	assert parsed_id == identity
-	assert parsed_sha == sha
-	assert ChangeFile.identity_of(name) == identity
+	# CR003 legacy format: {ticks}_{identity}_{sha256}
+	legacy_name = ChangeFile.compose_name(now, identity, sha)
+	legacy_parsed = ChangeFile.try_parse_name(legacy_name)
+	assert legacy_parsed is not None
+	ticks_l, id_l, sha_l = legacy_parsed
+	assert id_l == identity
+	assert sha_l == sha
+	assert ChangeFile.identity_of(legacy_name) == identity
 
 
 def test_change_file_creation_and_validation() -> None:
@@ -37,6 +46,10 @@ def test_change_file_creation_and_validation() -> None:
 
 		change_path = ChangeFile.create(pit_dir, item, "TestHost-openclaw-101")
 		assert change_path.is_file()
+
+		# CR041: file stem has exactly 1 underscore separating ticks and identity
+		assert change_path.stem.count("_") == 1
+		assert not any(len(part) == 64 for part in change_path.stem.split("_"))
 
 		# Validated read
 		payload = ChangeFile.read_validated(change_path)

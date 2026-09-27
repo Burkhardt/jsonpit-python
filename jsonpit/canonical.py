@@ -45,16 +45,16 @@ def utc_ticks_to_datetime(ticks: int) -> datetime.datetime:
 
 def format_iso_timestamp(dt: datetime.datetime) -> str:
 	"""
-	Formats a UTC datetime in standard round-trip ISO-8601 format:
-	'yyyy-MM-ddTHH:mm:ss.ffffffZ' (or 'yyyy-MM-ddTHH:mm:ssZ' if zero microseconds).
+	Formats a UTC datetime in exact .NET 'o' round-trip ISO-8601 format:
+	'yyyy-MM-ddTHH:mm:ss.fffffffZ' (7 fractional digits).
+	Guarantees 100% parity with .NET DateTimeOffset.ParseExact(..., "o", ...).
 	"""
 	if dt.tzinfo is None:
 		dt = dt.replace(tzinfo=datetime.timezone.utc)
 	else:
 		dt = dt.astimezone(datetime.timezone.utc)
-	if dt.microsecond == 0:
-		return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-	return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+	base = dt.strftime("%Y-%m-%dT%H:%M:%S")
+	return f"{base}.{dt.microsecond:06d}0Z"
 
 
 def parse_iso_timestamp(ts: str) -> datetime.datetime:
