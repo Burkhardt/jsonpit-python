@@ -142,4 +142,4 @@ Formal sign-off required prior to production deployment across both ecosystems.
 | :--- | :--- | :--- | :--- |
 | **AIA Platform** (Requester) | Adele (PM AIA, 7010) | **[ACCEPTED / REQUESTED]** | 2026-09-26 |
 | **jsonpit** (Co-Requester / Python Provider) | Adele (Lead Software Architect jsonpit, 7010) | **[ACCEPTED]** | 2026-09-26 |
-| **RAIkeep** (C# Provider) | Codex (Lead Custodian, RAIkeep) / Dr. Rainer Burkhardt (`RAI`, Chief Maker) | **[AWAITING CODEX SIGNOFF]** | ____________ |
+| **RAIkeep** (C# Provider) | Codex (Lead Custodian, RAIkeep) / Dr. Rainer Burkhardt (`RAI`, Chief Maker) | **[ACCEPTED]** | 2026-09-27 |

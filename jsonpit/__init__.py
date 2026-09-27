@@ -14,6 +14,7 @@ from .exceptions import (
 )
 from .fs import OsConfig
 from .history import PitItems
+from .icons import Icons
 from .item import PitItem
 from .store import Pit
 
@@ -28,6 +29,7 @@ __all__ = [
 	"PitItem",
 	"PitItems",
 	"OsConfig",
+	"Icons",
 	"JsonPitError",
 	"PitNotFoundError",
 	"PitCorruptError",

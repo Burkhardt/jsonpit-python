@@ -23,6 +23,7 @@ from .config import OsConfig, loads_json5
 from .exceptions import JsonPitError, PitNotFoundError
 from .fs import resolve_pit_target
 from .item import PitItem
+from .icons import Icons
 from .store import Pit
 from . import __version__
 
@@ -104,6 +105,60 @@ def discover_pits(
 	except Exception:
 		pass
 	return []
+
+
+def discover_root_pits(root: str | None, cloud: str | None = "OneDrive") -> list[str]:
+	"""Discovers all pit names under a resolved tenant root directory."""
+	if not root:
+		return []
+	cfg = OsConfig.load()
+	cloud_root = cfg.get_cloud_root(cloud or "OneDrive")
+	candidate: Path | None = None
+	if cloud_root and (cloud_root / root).is_dir():
+		candidate = cloud_root / root
+	else:
+		p = Path(os.path.expanduser(root))
+		if p.is_dir():
+			candidate = p
+		elif cloud_root:
+			candidate = cloud_root / root
+
+	if not candidate or not candidate.is_dir():
+		return []
+
+	found: list[str] = []
+	for child in sorted(candidate.iterdir()):
+		if child.is_dir():
+			pit_file = child / f"{child.name}.pit"
+			if pit_file.is_file():
+				found.append(child.name)
+		elif child.suffix.lower() == ".pit":
+			found.append(child.stem)
+	return sorted(list(dict.fromkeys(found)))
+
+
+def extract_cloud_and_root(argv: list[str]) -> tuple[str, str | None]:
+	"""Extracts -c/--cloud and -r/--root options from CLI token list."""
+	cloud = "OneDrive"
+	root = None
+	i = 0
+	while i < len(argv):
+		arg = argv[i]
+		if arg in ("-c", "--cloud") and i + 1 < len(argv):
+			cloud = argv[i + 1]
+			i += 2
+		elif arg.startswith("--cloud="):
+			cloud = arg.split("=", 1)[1]
+			i += 1
+		elif arg in ("-r", "--root") and i + 1 < len(argv):
+			root = argv[i + 1]
+			i += 2
+		elif arg.startswith("--root="):
+			root = arg.split("=", 1)[1]
+			i += 1
+		else:
+			i += 1
+	return cloud, root
 
 
 def cmd_grep(args: argparse.Namespace) -> int:
@@ -262,8 +317,35 @@ def cmd_history(args: argparse.Namespace) -> int:
 	return 0
 
 
+def cmd_pits(args: argparse.Namespace) -> int:
+	"""Discovers and lists available pits under the tenant root (-r is required)."""
+	use_color = should_color()
+	root = getattr(args, "root", None)
+	cloud = getattr(args, "cloud", "OneDrive")
+	if not root:
+		err_content = color(f"{Icons.ERROR} error: -r/--root is required to list pits (e.g. -r AIA)", C_BOLD + C_RED, use_color)
+		sys.stderr.write(f"jpit pits: {err_content}\n")
+		return 1
+
+	pits = discover_root_pits(root, cloud)
+	if getattr(args, "json", False):
+		sys.stdout.write(json.dumps(pits, indent=2) + "\n")
+		return 0
+
+	if not pits:
+		sys.stderr.write(f"No pits found under tenant root '{root}'.\n")
+		return 1
+
+	for p in pits:
+		sys.stdout.write(f"{p}\n")
+	return 0
+
+
 def cmd_list(args: argparse.Namespace) -> int:
-	"""Lists active entities in a Pit."""
+	"""Lists active entities in a Pit, or available pits if <pit> is omitted."""
+	if not getattr(args, "pit", None):
+		return cmd_pits(args)
+
 	with Pit.open(
 		args.pit,
 		cloud=args.cloud,
@@ -521,8 +603,413 @@ def cmd_status(args: argparse.Namespace) -> int:
 	return 0
 
 
-def build_parser() -> argparse.ArgumentParser:
-	common_parser = argparse.ArgumentParser(add_help=False)
+# ANSI escape codes for Option B multi-token highlights
+C_RESET = "\033[0m"
+C_BOLD = "\033[1m"
+C_DIM = "\033[2m"
+C_GREEN = "\033[32m"
+C_BRIGHT_GREEN = "\033[92m"
+C_CYAN = "\033[36m"
+C_BRIGHT_CYAN = "\033[96m"
+C_YELLOW = "\033[33m"
+C_BRIGHT_YELLOW = "\033[93m"
+C_BLUE = "\033[34m"
+C_BRIGHT_BLUE = "\033[94m"
+C_MAGENTA = "\033[35m"
+C_BRIGHT_MAGENTA = "\033[95m"
+C_RED = "\033[31m"
+C_BRIGHT_RED = "\033[91m"
+C_WHITE = "\033[37m"
+C_BRIGHT_WHITE = "\033[97m"
+
+# Deterministic positional badge palette for multi-option listings
+# 1st: Cyan, 2nd: Green, 3rd: Blue, 4th: Red, 5th: Magenta, 6th: Violet, etc.
+# Note: Yellow is intentionally omitted to reserve it exclusively for directory/folder glyphs.
+OPTION_BADGE_COLORS: list[str] = [
+	C_BRIGHT_CYAN,       # 1st: Cyan
+	C_BRIGHT_GREEN,      # 2nd: Green
+	C_BRIGHT_BLUE,       # 3rd: Blue
+	C_BRIGHT_RED,        # 4th: Red (matching ICloudDrive)
+	C_MAGENTA,           # 5th: Magenta
+	C_BRIGHT_MAGENTA,    # 6th: Violet / Bright Magenta
+	C_CYAN,              # 7th: Deep Cyan
+	C_BLUE,              # 8th: Deep Blue
+]
+
+
+def should_color() -> bool:
+	"""Determines if colored terminal output should be emitted."""
+	if os.getenv("NO_COLOR"):
+		return False
+	if os.getenv("TERM") == "dumb":
+		return False
+	return True
+
+
+def color(text: str, code: str, use_color: bool = True) -> str:
+	"""Wraps text in ANSI escape sequence if color is enabled."""
+	if not use_color:
+		return text
+	return f"{code}{text}{C_RESET}"
+
+
+def get_cloud_options_description(use_color: bool = True) -> str:
+	"""Builds the cloud provider options line with brand-specific badge glyphs."""
+	try:
+		cfg = OsConfig.load()
+		order = cfg.default_cloud_order
+		available = [c for c in order if c in cfg.clouds]
+	except Exception:
+		available = ["OneDrive", "Dropbox", "GoogleDrive", "ICloudDrive"]
+
+	if not available:
+		available = ["OneDrive", "Dropbox", "GoogleDrive", "ICloudDrive"]
+
+	formatted = []
+	for idx, name in enumerate(available):
+		glyph = Icons.cloud_provider_icon(name, idx + 1)
+		badge_color = OPTION_BADGE_COLORS[idx % len(OPTION_BADGE_COLORS)]
+		badge = color(glyph, badge_color, use_color)
+		default_str = " (default)" if idx == 0 else ""
+		formatted.append(f"{badge} {name}{default_str}")
+
+	return ", ".join(formatted)
+
+
+def print_banner(use_color: bool = True) -> None:
+	"""Prints the signature double-bordered jpit banner."""
+	bar_icon = color(Icons.BANNER, C_CYAN, use_color)
+	rule = color("────────────────────────────", C_CYAN, use_color)
+	info_icon = color(Icons.INFO, C_CYAN, use_color)
+	# Use bold cyan to match the border and guarantee high contrast on both light and dark backgrounds
+	title = color(f"jsonpit CLI (jpit v{__version__})", C_BOLD + C_CYAN, use_color)
+	sys.stdout.write(f"{bar_icon} {rule}\n")
+	sys.stdout.write(f"{info_icon} {title}\n")
+	sys.stdout.write(f"{bar_icon} {rule}\n")
+
+
+def print_top_help(
+	nologo: bool = False,
+	use_color: bool = True,
+	root: str | None = None,
+	cloud: str | None = "OneDrive",
+) -> None:
+	"""Prints the branded jpit help screen with Nerd Font glyphs and multi-token ANSI accents."""
+	if not nologo:
+		print_banner(use_color=use_color)
+
+	c_cmd = color("Commands:", C_BOLD + C_GREEN, use_color)
+	i_info = color(Icons.INFO, C_CYAN, use_color)
+	i_help = color(Icons.HELP, C_GREEN, use_color)
+	i_folder = color(Icons.FOLDER, C_YELLOW, use_color)
+	i_banner = color(Icons.BANNER, C_CYAN, use_color)
+
+	cmd_list = "grep, get, history, list, put, set, del, del-prop, rename, export, status, pits"
+	sys.stdout.write(f"{c_cmd}\t{i_info}\t{cmd_list}\n")
+
+	commands_spec = [
+		("grep", "<pattern> [<target>] [-i] [-e] [-p <prop>] [--at <ts>] [--json] [--jq <expr>]"),
+		("get", "<PitName> <ItemId> [--at <ts>] [--jq <expr>] [--with-deleted]"),
+		("history", "<PitName> <ItemId> [--jq <expr>]"),
+		("list", "[<PitName>] [--json] [--jq <expr>] (lists pits if <PitName> omitted)"),
+		("put", "<PitName> [<source>]"),
+		("set", "<PitName> <ItemId> <payload>"),
+		("del", "<PitName> <ItemId> [--by <author>]"),
+		("del-prop", "<PitName> <ItemId> <PropertyPath>"),
+		("rename", "<PitName> <OldId> <NewId> [--by <author>]"),
+		("export", "<PitName> [--out <file>] [--at <ts>] [--jq <expr>]"),
+		("status", "<PitName>"),
+		("pits", "[-r <root>] [-c <cloud>] [--json] (discover available pits)"),
+	]
+	for cmd, spec in commands_spec:
+		cmd_str = color(f"  jpit {cmd}", C_GREEN, use_color)
+		sys.stdout.write(f"{cmd_str} {spec}\n")
+
+	cloud_desc = get_cloud_options_description(use_color=use_color)
+
+	root_desc = (
+		f"root directory or tenant (current: {root})"
+		if root
+		else "root directory or tenant (e.g. AIA, AfricaStage)"
+	)
+
+	options_spec = [
+		("-h, --help", i_help, "print out all options"),
+		("-v, --version", i_info, "print version info"),
+		("-n, --nologo", i_banner, "do not display the banner"),
+		("-r, --root", i_folder, root_desc),
+		("-c, --cloud", i_folder, cloud_desc),
+		("--retain-window", i_info, "keep the activity window until timeout"),
+	]
+
+	for opt, icon, desc in options_spec:
+		sys.stdout.write(f"{opt}\t{icon}\t{desc}\n")
+
+	# Dynamic Pits Discovery line
+	pits_title = color(f"{Icons.INFO} PitNames", C_CYAN, use_color)
+	if root:
+		discovered = discover_root_pits(root, cloud)
+		if discovered:
+			formatted_pits = []
+			for idx, p in enumerate(discovered):
+				badge = Icons.letter_box_outline(p)
+				b_col = OPTION_BADGE_COLORS[idx % len(OPTION_BADGE_COLORS)]
+				c_badge = color(badge, b_col, use_color)
+				formatted_pits.append(f"{c_badge} {p}")
+			pits_str = ", ".join(formatted_pits)
+		else:
+			pits_str = color("(no pits found)", C_DIM, use_color)
+		sys.stdout.write(f"{pits_title}\t{i_folder}\t{pits_str}\n")
+	else:
+		hint = "specify -r <root> (e.g. -r AIA) to discover pits"
+		sys.stdout.write(f"{pits_title}\t{i_folder}\t{hint}\n")
+
+
+def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -> None:
+	"""Prints formatted help for an individual subcommand."""
+	if not nologo:
+		print_banner(use_color=use_color)
+
+	alias_map = {
+		"delete": "del",
+		"delete-item": "del",
+		"delete-property": "del-prop",
+	}
+	canonical_cmd = alias_map.get(cmd, cmd)
+
+	help_data: dict[str, dict[str, Any]] = {
+		"grep": {
+			"usage": "jpit grep <pattern> [<target>] [options]",
+			"desc": "Ripgrep-style living state semantic search across pits.",
+			"args": [
+				("pattern", "Text or regex to match"),
+				("target", "Pit name, file path, or tenant root (default: current directory)"),
+			],
+			"opts": [
+				("-i, --ignore-case", "Case-insensitive search"),
+				("-e, --regex", "Treat pattern as regex"),
+				("-p, --property <path>", "Scope search to a specific property path"),
+				("--at <timestamp>", "Project state as of ISO-8601 timestamp"),
+				("--json", "Output JSON stream for piping to jq"),
+				("--jq <expr>", "Convenience pipe through jq filter"),
+				("--with-deleted", "Include tombstoned entities"),
+			],
+		},
+		"get": {
+			"usage": "jpit get <PitName> <ItemId> [options]",
+			"desc": "Get entity projected state.",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("ItemId", "Entity ID to retrieve"),
+			],
+			"opts": [
+				("--at <timestamp>", "Point-in-time timestamp"),
+				("--jq <expr>", "Convenience pipe through jq filter"),
+				("--with-deleted", "Include tombstoned entities"),
+			],
+		},
+		"history": {
+			"usage": "jpit history <PitName> <ItemId> [options]",
+			"desc": "Dump immutable fragment history for an entity.",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("ItemId", "Entity ID"),
+			],
+			"opts": [
+				("--jq <expr>", "Convenience pipe through jq filter"),
+			],
+		},
+		"list": {
+			"usage": "jpit list [<PitName>] [options]",
+			"desc": "List active entities in a Pit, or available pits in -r root if <PitName> is omitted.",
+			"args": [
+				("PitName", "Pit name or file path (optional)"),
+			],
+			"opts": [
+				("--json", "Output JSON array"),
+				("--jq <expr>", "Convenience pipe through jq filter"),
+			],
+		},
+		"pits": {
+			"usage": "jpit pits [-r <root>] [-c <cloud>] [--json]",
+			"desc": "Discover available pits under a tenant root (-r is required).",
+			"args": [],
+			"opts": [
+				("--json", "Output JSON array of pit names"),
+			],
+		},
+		"put": {
+			"usage": "jpit put <PitName> [<source>] [options]",
+			"desc": "Ingest JSON5 entities from file or stdin pipe.",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("source", "Source file or '-' for stdin (default: '-')"),
+			],
+			"opts": [],
+		},
+		"set": {
+			"usage": "jpit set <PitName> <ItemId> <payload> [options]",
+			"desc": "Set or patch entity with JSON5 payload.",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("ItemId", "Entity ID"),
+				("payload", "JSON5 dictionary payload"),
+			],
+			"opts": [],
+		},
+		"del": {
+			"usage": "jpit del <PitName> <ItemId> [--by <author>] [options]",
+			"desc": "Tombstone an entity (aliases: delete-item, delete).",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("ItemId", "Entity ID to tombstone"),
+			],
+			"opts": [
+				("--by <author>", "Audited author identity"),
+			],
+			"aliases": ["delete-item", "delete"],
+		},
+		"del-prop": {
+			"usage": "jpit del-prop <PitName> <ItemId> <PropertyPath> [options]",
+			"desc": "Tombstone a property path (alias: delete-property).",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("ItemId", "Entity ID"),
+				("PropertyPath", "Dot-delimited property path (e.g. What.Chat)"),
+			],
+			"opts": [],
+			"aliases": ["delete-property"],
+		},
+		"rename": {
+			"usage": "jpit rename <PitName> <OldId> <NewId> [--by <author>] [options]",
+			"desc": "Migrate entity to new ID and tombstone old ID.",
+			"args": [
+				("PitName", "Pit name or file path"),
+				("OldId", "Current entity ID"),
+				("NewId", "New entity ID"),
+			],
+			"opts": [
+				("--by <author>", "Audited author identity"),
+			],
+		},
+		"export": {
+			"usage": "jpit export <PitName> [--out <file>] [--at <ts>] [--jq <expr>] [options]",
+			"desc": "Export entities as JSON array.",
+			"args": [
+				("PitName", "Pit name or file path"),
+			],
+			"opts": [
+				("--out <file>", "Output file path (default stdout)"),
+				("--at <timestamp>", "Project state as of timestamp"),
+				("--jq <expr>", "Convenience pipe through jq filter"),
+			],
+		},
+		"status": {
+			"usage": "jpit status <PitName> [options]",
+			"desc": "Inspect Pit directory lease and flags.",
+			"args": [
+				("PitName", "Pit name or file path"),
+			],
+			"opts": [],
+		},
+	}
+
+	info = help_data.get(canonical_cmd)
+	if not info:
+		print_top_help(nologo=nologo, use_color=use_color)
+		return
+
+	u_label = color("Usage:", C_BOLD + C_GREEN, use_color)
+	sys.stdout.write(f"{u_label} {info['usage']}\n\n")
+	sys.stdout.write(f"{info['desc']}\n\n")
+
+	if info["args"]:
+		sys.stdout.write(f"{color('Arguments:', C_BOLD + C_CYAN, use_color)}\n")
+		for arg, arg_desc in info["args"]:
+			sys.stdout.write(f"  {color(arg, C_GREEN, use_color):<24} {arg_desc}\n")
+		sys.stdout.write("\n")
+
+	if info["opts"]:
+		sys.stdout.write(f"{color('Options:', C_BOLD + C_CYAN, use_color)}\n")
+		for opt, opt_desc in info["opts"]:
+			sys.stdout.write(f"  {color(opt, C_GREEN, use_color):<24} {opt_desc}\n")
+		sys.stdout.write("\n")
+
+	sys.stdout.write(f"{color('Global options:', C_BOLD + C_CYAN, use_color)}\n")
+	sys.stdout.write(f"  {color('-c, --cloud <name>', C_GREEN, use_color):<24} Cloud drive (OneDrive, Dropbox, etc.)\n")
+	sys.stdout.write(f"  {color('-r, --root <tenant>', C_GREEN, use_color):<24} Root folder / tenant (e.g. AIA, AfricaStage)\n")
+	sys.stdout.write(f"  {color('--retain-window', C_GREEN, use_color):<24} Keep the activity window until timeout\n")
+	sys.stdout.write(f"  {color('-n, --nologo', C_GREEN, use_color):<24} Do not display the banner\n")
+	sys.stdout.write(f"  {color('-h, --help', C_GREEN, use_color):<24} Print command usage\n")
+
+	if info.get("aliases"):
+		alias_str = ", ".join(f"'{a}'" for a in info["aliases"])
+		a_label = color(f"{Icons.WARNING} Aliases:", C_YELLOW, use_color)
+		sys.stdout.write(f"\n{a_label} {alias_str}\n")
+
+
+def make_terminal_hyperlink(text: str, uri: str, use_color: bool = True) -> str:
+	"""Creates an OSC 8 terminal hyperlink with visual accent if terminal allows."""
+	if not use_color:
+		return text
+	return f"\033]8;;{uri}\033\\{color(text, C_CYAN, use_color)}\033]8;;\033\\"
+
+
+def print_retain_window_help(nologo: bool = False, use_color: bool = True) -> None:
+	"""Prints in-depth help, rationale, and specification links for --retain-window."""
+	if not nologo:
+		print_banner(use_color=use_color)
+
+	opt_name = color("--retain-window", C_BOLD + C_GREEN, use_color)
+	sys.stdout.write(f"{color('Option:', C_BOLD + C_CYAN, use_color)}    {opt_name}\n")
+	sys.stdout.write(f"{color('Type:', C_BOLD + C_CYAN, use_color)}      Boolean flag (default: False)\n\n")
+
+	sys.stdout.write(f"{color('Summary:', C_BOLD + C_GREEN, use_color)}\n")
+	sys.stdout.write("  Keep the ephemeral process activity window file until natural timeout.\n\n")
+
+	sys.stdout.write(f"{color('Lifecycle & Behavior:', C_BOLD + C_GREEN, use_color)}\n")
+	sys.stdout.write(
+		"  By default, every finite jpit operation registers an ephemeral process activity flag\n"
+		"  ({Machine}-{Process}-{PID}.flag) during execution to announce its presence across cloud\n"
+		"  drives, and cleanly self-deletes its flag upon process exit (CR024).\n\n"
+		"  When --retain-window is specified, jpit deliberately preserves the owned activity flag\n"
+		"  on disk upon exit, leaving it active until its 60-second lease window expires naturally.\n"
+		"  (Retained for backward compatibility; scheduled for retirement in the next major release).\n\n"
+	)
+
+	sys.stdout.write(f"{color('Specification & Documentation:', C_BOLD + C_GREEN, use_color)}\n")
+	pkg_dir = Path(__file__).resolve().parent
+	doc_cr_file = pkg_dir.parent / "doc" / "CR" / "CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md"
+	if doc_cr_file.is_file():
+		abs_uri = f"file://{doc_cr_file.as_posix()}#L45"
+		rel_jump = "doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md:45"
+	else:
+		abs_uri = "https://github.com/Burkhardt/jsonpit-python/blob/main/doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md#3---retain-window-compatibility-exception"
+		rel_jump = "doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md:45"
+
+	github_uri = "https://github.com/Burkhardt/jsonpit-python/blob/main/doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md#3---retain-window-compatibility-exception"
+
+	cr_title = "CR024 — Ephemeral Process-Flag Self-Cleanup (§3: --retain-window compatibility exception)"
+	hyperlink = make_terminal_hyperlink(cr_title, abs_uri, use_color=use_color)
+	sys.stdout.write(f"  {Icons.HELP} {hyperlink}\n")
+	sys.stdout.write(f"    • Local (IDE jump): {color(rel_jump, C_CYAN, use_color)}\n")
+	sys.stdout.write(f"    • File URI:         {color(abs_uri, C_DIM, use_color)}\n")
+	sys.stdout.write(f"    • GitHub:           {color(github_uri, C_DIM, use_color)}\n\n")
+
+
+class JsonPitArgumentParser(argparse.ArgumentParser):
+	"""Custom ArgumentParser that formats errors with Icons.ERROR and bold red."""
+
+	def error(self, message: str) -> None:
+		use_color = should_color()
+		self.print_usage(sys.stderr)
+		err_content = color(f"{Icons.ERROR} error: {message}", C_BOLD + C_RED, use_color)
+		sys.stderr.write(f"{self.prog}: {err_content}\n")
+		sys.exit(2)
+
+
+def build_parser() -> JsonPitArgumentParser:
+	common_parser = JsonPitArgumentParser(add_help=False)
 	common_parser.add_argument(
 		"-c", "--cloud",
 		default=argparse.SUPPRESS,
@@ -537,10 +1024,16 @@ def build_parser() -> argparse.ArgumentParser:
 		"--retain-window",
 		action="store_true",
 		default=False,
-		help="Keep the activity window until timeout (CR024)",
+		help="Keep the activity window until timeout",
+	)
+	common_parser.add_argument(
+		"-n", "--nologo",
+		action="store_true",
+		default=False,
+		help="Do not display the banner",
 	)
 
-	parser = argparse.ArgumentParser(
+	parser = JsonPitArgumentParser(
 		prog="jpit",
 		description="jpit — Cloud-first distributed replicated storage CLI and Pit-Grep.",
 		parents=[common_parser],
@@ -552,7 +1045,7 @@ def build_parser() -> argparse.ArgumentParser:
 		version=f"%(prog)s {__version__}",
 	)
 
-	subparsers = parser.add_subparsers(dest="command", required=True)
+	subparsers = parser.add_subparsers(dest="command", required=True, parser_class=JsonPitArgumentParser)
 
 	# grep (Pit-Grep)
 	p_grep = subparsers.add_parser("grep", parents=[common_parser], help="Ripgrep-style living state search across pits")
@@ -581,10 +1074,14 @@ def build_parser() -> argparse.ArgumentParser:
 	p_hist.add_argument("--jq", help="Convenience pipe through jq filter")
 
 	# list
-	p_list = subparsers.add_parser("list", parents=[common_parser], help="List active entities in a Pit")
-	p_list.add_argument("pit", help="Pit name")
+	p_list = subparsers.add_parser("list", parents=[common_parser], help="List active entities in a Pit (or available pits if <pit> omitted)")
+	p_list.add_argument("pit", nargs="?", default=None, help="Pit name (optional: if omitted, lists available pits in -r root)")
 	p_list.add_argument("--json", action="store_true", help="Output JSON array")
 	p_list.add_argument("--jq", help="Convenience pipe through jq filter")
+
+	# pits
+	p_pits = subparsers.add_parser("pits", parents=[common_parser], help="Discover available pits under a tenant root (-r is required)")
+	p_pits.add_argument("--json", action="store_true", help="Output JSON array of pit names")
 
 	# put
 	p_put = subparsers.add_parser("put", parents=[common_parser], help="Ingest JSON5 entities from file or stdin pipe")
@@ -641,6 +1138,37 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+	if argv is None:
+		argv = sys.argv[1:]
+
+	use_color = should_color()
+	nologo = "-n" in argv or "--nologo" in argv
+	cloud, root = extract_cloud_and_root(argv)
+
+	known_subcommands = {
+		"grep", "get", "history", "list", "put", "set", "del",
+		"delete", "delete-item", "del-prop", "delete-property",
+		"rename", "export", "status", "pits",
+	}
+
+	# Quick check for top-level help or no arguments
+	if len(argv) == 0 or (len(argv) == 1 and argv[0] in ("-h", "--help")):
+		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud)
+		return 0
+
+	# Check for command-specific or option-specific help: e.g. jpit --retain-window -h or jpit grep -h
+	is_help = "-h" in argv or "--help" in argv or (len(argv) > 0 and argv[0] == "help")
+	if is_help:
+		target_cmd = next((a for a in argv if a in known_subcommands), None)
+		if "--retain-window" in argv and target_cmd is None:
+			print_retain_window_help(nologo=nologo, use_color=use_color)
+			return 0
+		if target_cmd:
+			print_command_help(target_cmd, nologo=nologo, use_color=use_color)
+			return 0
+		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud)
+		return 0
+
 	parser = build_parser()
 	args = parser.parse_args(argv)
 
@@ -654,6 +1182,7 @@ def main(argv: list[str] | None = None) -> int:
 		"get": cmd_get,
 		"history": cmd_history,
 		"list": cmd_list,
+		"pits": cmd_pits,
 		"put": cmd_put,
 		"set": cmd_set,
 		"del": cmd_delete,
@@ -668,18 +1197,24 @@ def main(argv: list[str] | None = None) -> int:
 
 	cmd_func = dispatch.get(args.command)
 	if not cmd_func:
-		parser.print_help()
+		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud)
 		return 1
 
 	try:
 		return cmd_func(args)
 	except JsonPitError as ex:
-		sys.stderr.write(f"[jpit] Pit error: {ex}\n")
+		err_icon = color(Icons.ERROR, C_BOLD + C_RED, use_color)
+		err_label = color("Pit error:", C_BOLD + C_RED, use_color)
+		sys.stderr.write(f"{err_icon} {err_label} {ex}\n")
 		return 1
 	except Exception as ex:
-		sys.stderr.write(f"[jpit] Unexpected error: {ex}\n")
+		err_icon = color(Icons.ERROR, C_BOLD + C_RED, use_color)
+		err_label = color("Unexpected error:", C_BOLD + C_RED, use_color)
+		sys.stderr.write(f"{err_icon} {err_label} {ex}\n")
 		return 2
 
 
 if __name__ == "__main__":
 	sys.exit(main())
+
+

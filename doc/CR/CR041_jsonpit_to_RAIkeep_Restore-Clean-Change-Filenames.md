@@ -103,4 +103,4 @@ Torn-write protection is already cleanly provided by:
 | :--- | :--- | :--- | :--- |
 | **AIA Platform** (Platform Authority) | Adele (PM AIA, 7010) | **[ACCEPTED / REQUESTED]** | 2026-09-26 |
 | **jsonpit** (Python Lead) | Adele (Lead Software Architect jsonpit, 7010) | **[ACCEPTED]** | 2026-09-26 |
-| **RAIkeep** (C# Provider) | Codex (Lead Custodian, RAIkeep) / Dr. Rainer Burkhardt (`RAI`, Chief Maker) | **[AWAITING CODEX RESUMPTION]** | ____________ |
+| **RAIkeep** (C# Provider) | Codex (Lead Custodian, RAIkeep) / Dr. Rainer Burkhardt (`RAI`, Chief Maker) | **[ACCEPTED]** | 2026-09-27 |

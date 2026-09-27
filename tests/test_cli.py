@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -188,3 +189,84 @@ def test_disallow_manual_modified_or_deleted(capsys: Any = None) -> None:
 			code3 = main(["del-prop", str(pit_dir), "Item1", "Deleted"])
 		assert code3 == 1
 		assert "Cannot tombstone protected attribute 'Deleted'" in f_err3.getvalue()
+
+
+def test_cli_pits_discovery_and_delegation() -> None:
+	with tempfile.TemporaryDirectory() as tmp_dir:
+		root = Path(tmp_dir)
+		# Create four mock pits to test positional color sequence
+		(root / "PitAlpha").mkdir()
+		(root / "PitAlpha" / "PitAlpha.pit").write_text("{}", encoding="utf-8")
+		(root / "PitBeta").mkdir()
+		(root / "PitBeta" / "PitBeta.pit").write_text("{}", encoding="utf-8")
+		(root / "PitGamma").mkdir()
+		(root / "PitGamma" / "PitGamma.pit").write_text("{}", encoding="utf-8")
+		(root / "PitDelta").mkdir()
+		(root / "PitDelta" / "PitDelta.pit").write_text("{}", encoding="utf-8")
+
+		# 1. Test jpit pits -r <root>
+		f_out = io.StringIO()
+		with contextlib.redirect_stdout(f_out):
+			code = main(["pits", "-r", str(root)])
+		assert code == 0
+		out = f_out.getvalue()
+		assert "PitAlpha" in out
+		assert "PitBeta" in out
+		assert "PitGamma" in out
+		assert "PitDelta" in out
+
+		# 2. Test jpit pits -r <root> --json
+		f_out_json = io.StringIO()
+		with contextlib.redirect_stdout(f_out_json):
+			code = main(["pits", "-r", str(root), "--json"])
+		assert code == 0
+		data = json.loads(f_out_json.getvalue())
+		assert data == ["PitAlpha", "PitBeta", "PitDelta", "PitGamma"]
+
+		# 3. Test jpit list -r <root> delegation
+		f_out_list = io.StringIO()
+		with contextlib.redirect_stdout(f_out_list):
+			code = main(["list", "-r", str(root)])
+		assert code == 0
+		assert "PitAlpha" in f_out_list.getvalue()
+
+		# 4. Test jpit -r <root> -h dynamic help line with positional colors
+		f_out_help = io.StringIO()
+		old_term = os.environ.get("TERM")
+		try:
+			os.environ["TERM"] = "xterm-256color"
+			with contextlib.redirect_stdout(f_out_help):
+				code = main(["-r", str(root), "-h"])
+		finally:
+			if old_term is None:
+				os.environ.pop("TERM", None)
+			else:
+				os.environ["TERM"] = old_term
+
+		assert code == 0
+		help_out = f_out_help.getvalue()
+		assert "PitNames" in help_out
+		assert f"(current: {root})" in help_out
+		assert "PitAlpha" in help_out
+		assert "PitBeta" in help_out
+		# 3rd option (idx 2) is blue (\033[94m), 4th option (idx 3) is red (\033[91m)
+		from jsonpit.cli import C_BRIGHT_BLUE, C_BRIGHT_RED
+		assert C_BRIGHT_BLUE in help_out
+		assert C_BRIGHT_RED in help_out
+
+		# 5. Verify main help does NOT display (CR024)
+		assert "(CR024)" not in help_out
+
+		# 6. Verify jpit --retain-window -h detailed help and hyperlinks
+		f_out_rw = io.StringIO()
+		with contextlib.redirect_stdout(f_out_rw):
+			code_rw = main(["--retain-window", "-h"])
+		assert code_rw == 0
+		rw_out = f_out_rw.getvalue()
+		assert "Option:    --retain-window" in rw_out
+		assert "CR024" in rw_out
+		assert "doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md:45" in rw_out
+		assert "#L45" in rw_out
+		assert "#3---retain-window-compatibility-exception" in rw_out
+
+
