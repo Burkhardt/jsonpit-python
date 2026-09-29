@@ -16,16 +16,18 @@ from .fs import OsConfig
 from .history import PitItems
 from .icons import Icons
 from .item import PitItem
-from .store import Pit
+from .store import Pit, PitStore, parse_and_validate_seed_payload
 
 try:
 	import importlib.metadata
 	__version__ = importlib.metadata.version("jsonpit")
 except Exception:
-	__version__ = "4.4.2"
+	__version__ = "4.4.3"
 
 __all__ = [
 	"Pit",
+	"PitStore",
+	"parse_and_validate_seed_payload",
 	"PitItem",
 	"PitItems",
 	"OsConfig",

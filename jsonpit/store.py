@@ -28,6 +28,7 @@ from .exceptions import (
 	PitCorruptError,
 	PitInstanceConflictError,
 	PitNotFoundError,
+	ProtectedAttributeError,
 )
 from .flags import (
 	MasterFlagFile,
@@ -47,6 +48,71 @@ from .fs import (
 )
 from .history import PitItems
 from .item import PitItem
+
+
+def has_non_empty_string_id(item: Any) -> bool:
+	"""
+	CR043: Checks if an item is a dictionary with an exact non-empty string 'Id'.
+	Lowercase 'id' or non-string/whitespace values are not accepted.
+	"""
+	if not isinstance(item, dict):
+		return False
+	val = item.get("Id")
+	return isinstance(val, str) and bool(val.strip())
+
+
+def parse_and_validate_seed_payload(
+	payload: str | bytes | Any,
+	source_name: str = "source",
+) -> list[dict[str, Any]]:
+	"""
+	CR043: Parses and validates a seed payload strictly BEFORE opening target Pit.
+	Three accepted shapes:
+	  1. Single Entity Object with an exact, non-empty string 'Id'
+	  2. Keyed Entity Map where all values are entity dictionaries
+	  3. Entity Array of dictionaries
+	Every individual entity must have an exact, non-empty string 'Id' and pass client payload validation.
+	"""
+	if isinstance(payload, (str, bytes)):
+		text = payload.decode("utf-8") if isinstance(payload, bytes) else payload
+		if not text.strip():
+			raise ValueError(f"Source '{source_name}' is empty.")
+		try:
+			root = loads_json5(text)
+		except Exception as ex:
+			raise ValueError(f"Source '{source_name}' contains invalid JSON: {ex}") from ex
+	else:
+		root = payload
+
+	shape_diagnostic = (
+		f"Source '{source_name}' must be a JSON array of entities, a single entity object "
+		f"with a non-empty 'Id', or a keyed map of entity objects."
+	)
+
+	items: list[Any]
+	if isinstance(root, list):
+		items = root
+	elif isinstance(root, dict) and has_non_empty_string_id(root):
+		items = [root]
+	elif isinstance(root, dict) and all(isinstance(v, dict) for v in root.values()):
+		items = list(root.values())
+	else:
+		raise ValueError(shape_diagnostic)
+
+	validated: list[dict[str, Any]] = []
+	for item in items:
+		if not isinstance(item, dict):
+			raise ValueError(
+				f"{shape_diagnostic} Arrays and keyed maps may contain only JSON objects."
+			)
+		if not has_non_empty_string_id(item):
+			raise ValueError(
+				f"Source '{source_name}' contains an entity without a non-empty string 'Id'."
+			)
+		PitItem.validate_client_payload(item)
+		validated.append(item)
+
+	return validated
 
 
 class JsonPitBase:
@@ -355,35 +421,20 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		"""
 		Ingests a seed file (JSON or JSON5) and adds all entities to the pit.
 		Returns count of imported entities.
+		CR043: Validates payload shape and entities strictly before mutation.
 		"""
 		path = Path(file_path)
 		if not path.is_file():
 			raise PitNotFoundError(f"Seed file not found: {path}")
 
 		text = path.read_text(encoding="utf-8")
-		# Human seeder files may use JSON5 syntax (comments, unquoted keys, trailing commas)
-		data = loads_json5(text)
+		items_to_add = parse_and_validate_seed_payload(text, str(path))
 
 		count = 0
-		if isinstance(data, list):
-			for row in data:
-				if isinstance(row, dict):
-					item = PitItem(row)
-					self.add(item)
-					count += 1
-		elif isinstance(data, dict):
-			# Object mapping ID -> entity or single entity
-			if "Id" in data or "id" in data:
-				self.add(PitItem(data))
-				count = 1
-			else:
-				for k, v in data.items():
-					if isinstance(v, dict):
-						row = copy.deepcopy(v)
-						if "Id" not in row and "id" not in row:
-							row["Id"] = k
-						self.add(PitItem(row))
-						count += 1
+		for raw_obj in items_to_add:
+			item = PitItem(raw_obj)
+			self.add(item)
+			count += 1
 		return count
 
 	# --- Entity Addition & Mutation ---
@@ -681,3 +732,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 
 	def __repr__(self) -> str:
 		return f"<Pit '{self.pit_name}' path={self.pit_dir} items={len(self)}>"
+
+
+Pit.parse_and_validate_seed_payload = staticmethod(parse_and_validate_seed_payload)  # type: ignore[attr-defined]
+PitStore = Pit

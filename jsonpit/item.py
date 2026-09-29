@@ -245,6 +245,21 @@ class PitItem(MutableMapping[str, Any]):
 
 		return self.extend_with(patch_dict)
 
+	@staticmethod
+	def validate_client_payload(payload: dict[str, Any]) -> None:
+		"""
+		Validates a client entity payload before live ingestion.
+		CR040: Lifecycle attributes (Modified, Deleted) are reserved for historical replay.
+		"""
+		if not isinstance(payload, dict):
+			raise ValueError("Client payload must evaluate to a dictionary.")
+		for k in payload:
+			if k.lower() in ("modified", "deleted"):
+				raise ProtectedAttributeError(
+					f"Cannot manually update protected attribute '{k}'. "
+					"Use 'jpit del' to delete an entity."
+				)
+
 	def delete_property(self, property_name: str) -> None:
 		"""
 		Appends a property tombstone by setting the top-level property to None (JSON null).

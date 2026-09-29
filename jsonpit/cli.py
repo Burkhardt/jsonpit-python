@@ -20,11 +20,11 @@ from typing import Any
 
 from .canonical import canonical_json, format_iso_timestamp, parse_iso_timestamp, utcnow
 from .config import OsConfig, loads_json5
-from .exceptions import JsonPitError, PitNotFoundError
+from .exceptions import JsonPitError, PitNotFoundError, ProtectedAttributeError
 from .fs import resolve_pit_target
 from .item import PitItem
 from .icons import Icons
-from .store import Pit
+from .store import Pit, parse_and_validate_seed_payload
 from . import __version__
 
 
@@ -380,47 +380,37 @@ def cmd_put(args: argparse.Namespace) -> int:
 	"""
 	Ingests entities from stdin, piped jq output, or a JSON5 file.
 	Adds entities cloud-safely with leasing.
+	CR043: Supports single root entity, keyed entity map, or entity array.
 	"""
+	source_path_str = getattr(args, "source", None)
+	if not source_path_str and getattr(args, "source_opt", None):
+		source_path_str = args.source_opt
+	if not source_path_str:
+		source_path_str = "-"
+
 	# Read source content
 	content = ""
-	if args.source and args.source != "-":
-		path = Path(args.source)
+	if source_path_str != "-":
+		path = Path(source_path_str)
 		if not path.is_file():
 			sys.stderr.write(f"[jpit] Source file not found: {path}\n")
 			return 1
 		content = path.read_text(encoding="utf-8")
+		source_name = str(path)
 	else:
 		content = sys.stdin.read()
+		source_name = "<stdin>"
 
-	if not content.strip():
-		sys.stderr.write("[jpit] Error: No input data provided.\n")
+	# CR043 Pre-flight validation strictly before opening target Pit or creating directories
+	try:
+		items_to_add = parse_and_validate_seed_payload(content, source_name)
+	except (ValueError, ProtectedAttributeError) as ex:
+		sys.stderr.write(f"[jpit] Error: {ex}\n")
 		return 1
-
-	data = loads_json5(content)
-	items_to_add: list[dict[str, Any]] = []
-	if isinstance(data, list):
-		items_to_add = [row for row in data if isinstance(row, dict)]
-	elif isinstance(data, dict):
-		if "Id" in data or "id" in data:
-			items_to_add = [data]
-		else:
-			for k, v in data.items():
-				if isinstance(v, dict):
-					v["Id"] = k
-					items_to_add.append(v)
 
 	if not items_to_add:
-		sys.stderr.write("[jpit] Error: Input data contains no valid entity objects.\n")
-		return 1
-
-	for raw_obj in items_to_add:
-		forbidden = [k for k in raw_obj if k.lower() in ("modified", "deleted")]
-		if forbidden:
-			sys.stderr.write(
-				f"[jpit] Error: Cannot manually update protected attribute '{forbidden[0]}'. "
-				"Use 'jpit del' to delete an entity.\n"
-			)
-			return 1
+		print(f"[jpit] Seed source '{source_name}' contained 0 entities.")
+		return 0
 
 	with Pit.open(
 		args.pit,
@@ -430,10 +420,7 @@ def cmd_put(args: argparse.Namespace) -> int:
 	) as pit:
 		count = 0
 		for raw_obj in items_to_add:
-			item_id = raw_obj.get("Id") or raw_obj.get("id") or raw_obj.get("Name")
-			if not item_id:
-				continue
-			item = PitItem(raw_obj, id=str(item_id))
+			item = PitItem(raw_obj)
 			pit.add(item)
 			count += 1
 
@@ -712,7 +699,7 @@ def print_top_help(
 		("get", "<PitName> <ItemId> [--at <ts>] [--jq <expr>] [--with-deleted]"),
 		("history", "<PitName> <ItemId> [--jq <expr>]"),
 		("list", "[<PitName>] [--json] [--jq <expr>] (lists pits if <PitName> omitted)"),
-		("put", "<PitName> [<source>]"),
+		("put", "<PitName> [<source>] [-s <source>] (alias: seed)"),
 		("set", "<PitName> <ItemId> <payload>"),
 		("del", "<PitName> <ItemId> [--by <author>]"),
 		("del-prop", "<PitName> <ItemId> <PropertyPath>"),
@@ -774,6 +761,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 		"delete": "del",
 		"delete-item": "del",
 		"delete-property": "del-prop",
+		"seed": "put",
 	}
 	canonical_cmd = alias_map.get(cmd, cmd)
 
@@ -839,13 +827,16 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"put": {
-			"usage": "jpit put <PitName> [<source>] [options]",
-			"desc": "Ingest JSON5 entities from file or stdin pipe.",
+			"usage": "jpit put <PitName> [<source>] [-s <source>] [options]",
+			"desc": "Ingest JSON5 entities from file or stdin pipe (alias: seed).",
 			"args": [
 				("PitName", "Pit name or file path"),
 				("source", "Source file or '-' for stdin (default: '-')"),
 			],
-			"opts": [],
+			"opts": [
+				("-s, --source <file>", "Source file for import (JSON or JSON5)"),
+			],
+			"aliases": ["seed"],
 		},
 		"set": {
 			"usage": "jpit set <PitName> <ItemId> <payload> [options]",
@@ -1083,10 +1074,16 @@ def build_parser() -> JsonPitArgumentParser:
 	p_pits = subparsers.add_parser("pits", parents=[common_parser], help="Discover available pits under a tenant root (-r is required)")
 	p_pits.add_argument("--json", action="store_true", help="Output JSON array of pit names")
 
-	# put
-	p_put = subparsers.add_parser("put", parents=[common_parser], help="Ingest JSON5 entities from file or stdin pipe")
+	# put / seed
+	p_put = subparsers.add_parser(
+		"put",
+		aliases=["seed"],
+		parents=[common_parser],
+		help="Ingest JSON5 entities from file or stdin pipe (alias: seed)",
+	)
 	p_put.add_argument("pit", help="Pit name")
-	p_put.add_argument("source", nargs="?", default="-", help="Source file or '-' for stdin")
+	p_put.add_argument("source", nargs="?", default=None, help="Source file or '-' for stdin")
+	p_put.add_argument("-s", "--source", dest="source_opt", help="Source file for import (JSON or JSON5)")
 
 	# set
 	p_set = subparsers.add_parser("set", parents=[common_parser], help="Set or patch entity with JSON5 payload")
@@ -1146,7 +1143,7 @@ def main(argv: list[str] | None = None) -> int:
 	cloud, root = extract_cloud_and_root(argv)
 
 	known_subcommands = {
-		"grep", "get", "history", "list", "put", "set", "del",
+		"grep", "get", "history", "list", "put", "seed", "set", "del",
 		"delete", "delete-item", "del-prop", "delete-property",
 		"rename", "export", "status", "pits",
 	}
@@ -1184,6 +1181,7 @@ def main(argv: list[str] | None = None) -> int:
 		"list": cmd_list,
 		"pits": cmd_pits,
 		"put": cmd_put,
+		"seed": cmd_put,
 		"set": cmd_set,
 		"del": cmd_delete,
 		"delete": cmd_delete,
