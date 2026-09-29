@@ -81,6 +81,16 @@ If you maintain multiple Python versions on your machine (e.g. 3.12, 3.13, 3.14)
    jpit --version
    ```
 
+> [!TIP]
+> **Encountering `error: externally-managed-environment` (Homebrew Python or modern Linux / PEP 668)?**  
+> Modern Homebrew and Linux package managers protect their system Python prefix by default. You have two clean options:
+> - **Option A (Isolated CLI via `pipx`):** Run `brew install pipx && pipx ensurepath`, then `pipx install jpit`.
+> - **Option B (Direct install into Homebrew Python):** Pass `--break-system-packages`:
+>   ```bash
+>   python -m pip install --upgrade --break-system-packages jpit
+>   ```
+>   *(Completely safe: `jsonpit` has zero runtime dependencies and cannot break system packages).*
+
 *(Both the `jsonpit` library package and the `jpit` companion package provide both `jpit` and `jsonpit` command-line executables).*
 
 ---

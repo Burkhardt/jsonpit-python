@@ -50,6 +50,14 @@ If you have multiple Python versions (e.g. 3.12, 3.13, 3.14):
    jpit --version
    ```
 
+> [!TIP]
+> **Encountering `error: externally-managed-environment` (Homebrew Python or Linux / PEP 668)?**  
+> Run `brew install pipx && pipx install jpit`, or pass `--break-system-packages`:
+> ```bash
+> python -m pip install --upgrade --break-system-packages jpit
+> ```
+> *(Zero dependencies: safe to install without breaking system packages).*
+
 *(Installing `jpit` automatically installs the `jsonpit` core storage engine and provisions both `jpit` and `jsonpit` command-line executables).*
 
 ---
