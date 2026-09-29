@@ -12,7 +12,7 @@ from .exceptions import (
 	ProtectedAttributeError,
 	TombstoneError,
 )
-from .fs import OsConfig
+from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuration_diagnostic
 from .history import PitItems
 from .icons import Icons
 from .item import PitItem
@@ -22,7 +22,7 @@ try:
 	import importlib.metadata
 	__version__ = importlib.metadata.version("jsonpit")
 except Exception:
-	__version__ = "4.4.3"
+	__version__ = "4.4.4"
 
 __all__ = [
 	"Pit",
@@ -31,6 +31,8 @@ __all__ = [
 	"PitItem",
 	"PitItems",
 	"OsConfig",
+	"DEFAULT_CONFIG_FILE_LOCATION",
+	"missing_configuration_diagnostic",
 	"Icons",
 	"JsonPitError",
 	"PitNotFoundError",

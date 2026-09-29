@@ -1,7 +1,7 @@
-# jpit (v4.4.3)
+# jpit (v4.4.4)
 
 > **The developer and AI agent companion CLI for [jsonpit](https://pypi.org/project/jsonpit/) — daemon-free distributed storage over Cloud Drives.**  
-> *100% lockstep parity with C# `pits v4.4.3` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).*
+> *100% lockstep parity with C# `pits v4.4.4` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).*
 
 `jpit` provides high-performance semantic living state search ("Pit-Grep"), time-travel inspection, and cloud-safe distributed ingestion across replicated JsonPits on OneDrive, Dropbox, and Google Drive.
 
@@ -16,7 +16,7 @@ Install `jpit` in an isolated environment without dependency conflicts across yo
 # Install jpit globally
 pipx install jpit
 
-# Upgrade to latest lockstep release (v4.4.3)
+# Upgrade to latest lockstep release (v4.4.4)
 pipx upgrade jpit
 ```
 

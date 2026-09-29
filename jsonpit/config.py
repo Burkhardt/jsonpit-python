@@ -217,6 +217,20 @@ def loads_json5(text: str) -> Any:
 	return parse_value()
 
 
+DEFAULT_CONFIG_FILE_LOCATION: str = "~/.config/RAIkeep.json5"
+
+
+def missing_configuration_diagnostic() -> str:
+	"""
+	CR044 §7.4: Standardized diagnostic when RAIkeep configuration is not found.
+	Directs the operator to 'amafu init'.
+	"""
+	return (
+		f"RAIkeep configuration was not found at '{DEFAULT_CONFIG_FILE_LOCATION}'. "
+		"Run 'amafu init' to detect cloud providers and create it."
+	)
+
+
 class OsConfig:
 	"""
 	System configuration derived from ~/.config/RAIkeep.json5 or fallback files.
@@ -252,6 +266,16 @@ class OsConfig:
 			for name, path_str in raw_cloud.items():
 				if path_str:
 					self.clouds[name] = self._normalize_path(str(path_str))
+
+	@property
+	def is_config_loaded(self) -> bool:
+		"""Returns True if configuration was loaded from a file or explicit dictionary."""
+		return self._config_path is not None or bool(self.clouds)
+
+	@classmethod
+	def reset(cls) -> None:
+		"""Resets the singleton instance (used in tests)."""
+		cls._instance = None
 
 	@staticmethod
 	def _normalize_path(p: str) -> Path:

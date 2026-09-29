@@ -14,7 +14,7 @@ In distributed multi-platform architectures, ensuring multiple independent langu
 
 Under the **Lead Implementation Model**:
 1. **The Reference Lead:** C# `JsonPit` and its companion CLI `pits` (authored by Dr. Rainer Burkhardt in [RAIkeep](https://github.com/Burkhardt/RAIkeep)) serve as the canonical reference specification.
-2. **Version Harmonization:** Python `jsonpit` and `jpit` lock their release versions directly to the reference `pits` release (e.g. `v4.4.3`). A Python version may only be published when all cross-engine suites pass with 0 failures against the matching C# `pits` binary.
+2. **Version Harmonization:** Python `jsonpit` and `jpit` lock their release versions directly to the reference `pits` release (e.g. `v4.4.4`). A Python version may only be published when all cross-engine suites pass with 0 failures against the matching C# `pits` binary.
 3. **Packaging Isolation:** All cross-engine parity suites (`tests/suites/*.json5`) and execution machinery (`tests/sequence_runner.py`) live exclusively in `tests/` and are strictly excluded from published distribution artifacts (`sdist` / `wheel`) via Hatchling build rules in `pyproject.toml`.
 
 ---

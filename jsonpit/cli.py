@@ -19,7 +19,7 @@ import sys
 from typing import Any
 
 from .canonical import canonical_json, format_iso_timestamp, parse_iso_timestamp, utcnow
-from .config import OsConfig, loads_json5
+from .config import OsConfig, loads_json5, missing_configuration_diagnostic
 from .exceptions import JsonPitError, PitNotFoundError, ProtectedAttributeError
 from .fs import resolve_pit_target
 from .item import PitItem
@@ -70,21 +70,39 @@ def discover_pits(
 			return discovered_cwd
 
 	# Check if target is a single pit or an explicit directory
-	try:
-		p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
-		if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
-			return [(p_dir, p_name)]
-	except Exception:
-		pass
+	raw_str = str(target).strip()
+	is_explicit_path = (
+		raw_str.startswith(("/", "~", ".", "\\"))
+		or ("/" in raw_str and not raw_str.startswith("-"))
+		or ("\\" in raw_str)
+		or Path(raw_str).exists()
+	)
+	if is_explicit_path:
+		try:
+			p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
+			if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
+				return [(p_dir, p_name)]
+		except Exception:
+			pass
+		if Path(target).is_dir():
+			discovered = []
+			for child in sorted(Path(target).iterdir()):
+				if child.is_dir():
+					pit_file = child / f"{child.name}.pit"
+					if pit_file.is_file():
+						discovered.append((child, child.name))
+			if discovered:
+				return discovered
 
-	# Check if target is a tenant/root folder containing multiple pit directories
+	# Target requires cloud resolution
 	cfg = OsConfig.load()
+	if not cfg.is_config_loaded and not is_explicit_path:
+		raise PitNotFoundError(missing_configuration_diagnostic())
+
 	cloud_root = cfg.get_cloud_root(cloud)
 	candidates: list[Path] = []
 	if cloud_root and (cloud_root / target).is_dir():
 		candidates.append(cloud_root / target)
-	if Path(target).is_dir():
-		candidates.append(Path(target))
 
 	discovered: list[tuple[Path, str]] = []
 	for candidate_root in candidates:
@@ -97,13 +115,10 @@ def discover_pits(
 	if discovered:
 		return discovered
 
-	# Fallback single pit target (only return if it physically exists)
-	try:
-		p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
-		if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
-			return [(p_dir, p_name)]
-	except Exception:
-		pass
+	# Fallback single pit target
+	p_dir, p_name = resolve_pit_target(target, cloud=cloud, root=root)
+	if (p_dir / f"{p_name}.pit").is_file() or p_dir.is_dir():
+		return [(p_dir, p_name)]
 	return []
 
 
@@ -111,17 +126,16 @@ def discover_root_pits(root: str | None, cloud: str | None = "OneDrive") -> list
 	"""Discovers all pit names under a resolved tenant root directory."""
 	if not root:
 		return []
-	cfg = OsConfig.load()
-	cloud_root = cfg.get_cloud_root(cloud or "OneDrive")
-	candidate: Path | None = None
-	if cloud_root and (cloud_root / root).is_dir():
-		candidate = cloud_root / root
+	raw_str = str(root).strip()
+	p = Path(os.path.expanduser(raw_str))
+	if p.is_dir():
+		candidate: Path | None = p
 	else:
-		p = Path(os.path.expanduser(root))
-		if p.is_dir():
-			candidate = p
-		elif cloud_root:
-			candidate = cloud_root / root
+		cfg = OsConfig.load()
+		if not cfg.is_config_loaded:
+			raise PitNotFoundError(missing_configuration_diagnostic())
+		cloud_root = cfg.get_cloud_root(cloud or "OneDrive")
+		candidate = cloud_root / root if cloud_root else None
 
 	if not candidate or not candidate.is_dir():
 		return []
@@ -735,7 +749,10 @@ def print_top_help(
 	# Dynamic Pits Discovery line
 	pits_title = color(f"{Icons.INFO} PitNames", C_CYAN, use_color)
 	if root:
-		discovered = discover_root_pits(root, cloud)
+		try:
+			discovered = discover_root_pits(root, cloud)
+		except Exception:
+			discovered = []
 		if discovered:
 			formatted_pits = []
 			for idx, p in enumerate(discovered):

@@ -11,7 +11,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from .config import OsConfig
+from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuration_diagnostic
 from .exceptions import PitNotFoundError
 
 
@@ -52,12 +52,16 @@ def resolve_pit_target(
 			pit_name = resolved.name
 		return pit_dir, pit_name
 
+	# CR044 §7.4: If attempting cloud triad resolution and no configuration file exists
+	if not cfg.is_config_loaded:
+		raise PitNotFoundError(missing_configuration_diagnostic())
+
 	# Cloud triad resolution (e.g. name="Person", cloud="OneDrive", root="AfricaStage")
 	cloud_root = cfg.get_cloud_root(cloud)
 	if cloud_root is None:
 		raise PitNotFoundError(
 			f"Could not resolve cloud storage root for cloud '{cloud or 'default'}'. "
-			"Ensure ~/.config/RAIkeep.json5 or ~/.config/jsonpit.json5 is configured."
+			f"Ensure {DEFAULT_CONFIG_FILE_LOCATION} or ~/.config/jsonpit.json5 is configured."
 		)
 
 	pit_name = raw_str

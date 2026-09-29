@@ -21,6 +21,7 @@ def run_suite() -> int:
 	import tests.test_change_file as t_change
 	import tests.test_cli as t_cli
 	import tests.test_cr043_seed_shapes as t_cr043
+	import tests.test_cr044_missing_config as t_cr044
 	import tests.test_csharp_compatibility as t_compat
 	import tests.test_delete_property_projection as t_dp
 	import tests.test_equal_timestamp_ordering as t_equal
@@ -38,6 +39,7 @@ def run_suite() -> int:
 		("test_change_file", t_change),
 		("test_cli", t_cli),
 		("test_cr043_seed_shapes", t_cr043),
+		("test_cr044_missing_config", t_cr044),
 		("test_sequence_suites", t_seq),
 	]
 

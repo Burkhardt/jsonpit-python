@@ -9,14 +9,14 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
-## Cross-Tool & Cross-Language Version Alignment (`v4.4.3`)
+## Cross-Tool & Cross-Language Version Alignment (`v4.4.4`)
 
-`jsonpit` and the `jpit` CLI are version-synchronized to **`v4.4.3`** in direct lockstep with C# `JsonPit` and `pits 4.4.3` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+`jsonpit` and the `jpit` CLI are version-synchronized to **`v4.4.4`** in direct lockstep with C# `JsonPit` and `pits 4.4.4` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ### Why Harmonized Versioning is Essential:
 - **Instant Compatibility Clarity:** Operators, DevOps pipelines, and autonomous AI agents immediately know whether `jpit` and `pits` share the exact same distributed protocol revision. If both tools report `4.4.x`, they guarantee identical master leasing rules, receipt mechanisms, 7-digit UTC timestamp parsing, and CR041 clean change file conventions.
 - **Elimination of Multi-Language Matrix Confusion:** In heterogeneous environments (e.g. C# backend daemons paired with Python agent orchestrators and data science tooling), unified SemVer tags eliminate complex cross-compatibility lookup tables.
-- **Joint Protocol Governance:** Architectural changes (such as CR040 anti-Read-Modify-Write rules and CR041 clean change file formatting) are certified across both languages under the exact same version milestone before release.
+- **Joint Protocol Governance:** Architectural changes (such as CR040 anti-Read-Modify-Write rules, CR041 clean change file formatting, and CR044 missing configuration diagnostics) are certified across both languages under the exact same version milestone before release.
 
 ---
 
@@ -43,7 +43,7 @@ pipx install jsonpit
 # (or via companion alias)
 pipx install jpit
 
-# Upgrade to the latest lockstep release (v4.4.3)
+# Upgrade to the latest lockstep release (v4.4.4)
 pipx upgrade jsonpit
 # (or)
 pipx upgrade jpit
