@@ -29,6 +29,27 @@ pip install jpit
 pip install --upgrade jpit
 ```
 
+### Upgrading with Multi-Python / `pyenv` Environments
+If you have multiple Python versions (e.g. 3.12, 3.13, 3.14):
+
+1. **Anchor `pip` to your active interpreter:**
+   ```bash
+   python -m pip install --upgrade jpit
+   ```
+   *(Prevents installing into the wrong Python version if bare `pip` points to an older runtime).*
+
+2. **If using `pyenv`, regenerate shims:**
+   ```bash
+   pyenv rehash
+   ```
+   *Ensures `which jpit` points to `~/.pyenv/shims/jpit`, dynamically delegating to your active shell Python.*
+
+3. **Verify:**
+   ```bash
+   which jpit
+   jpit --version
+   ```
+
 *(Installing `jpit` automatically installs the `jsonpit` core storage engine and provisions both `jpit` and `jsonpit` command-line executables).*
 
 ---
