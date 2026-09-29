@@ -32,6 +32,38 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
+## Installation & Upgrade
+
+### As a Global CLI Tool (`jpit`) via `pipx` (Recommended)
+To run the `jpit` command-line companion anywhere across your machine in an isolated environment without polluting system packages:
+
+```bash
+# Install globally
+pipx install jsonpit
+# (or via companion alias)
+pipx install jpit
+
+# Upgrade to the latest lockstep release (v4.4.3)
+pipx upgrade jsonpit
+# (or)
+pipx upgrade jpit
+```
+
+### In a Project / Virtual Environment via `pip`
+To embed `jsonpit` into your Python applications, data science workflows, or agentic runtimes:
+
+```bash
+# Install
+pip install jsonpit
+
+# Upgrade to the latest release
+pip install --upgrade jsonpit
+```
+
+*(Both the `jsonpit` library package and the `jpit` companion package provide both `jpit` and `jsonpit` command-line executables).*
+
+---
+
 ## Quickstart
 
 ### 1. Cloud-First Triad (The Standard Pattern)

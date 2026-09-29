@@ -1,14 +1,39 @@
-# jpit
+# jpit (v4.4.3)
 
-The developer and agent companion CLI for [jsonpit](https://pypi.org/project/jsonpit/) — daemon-free distributed storage over Cloud Drives.
+> **The developer and AI agent companion CLI for [jsonpit](https://pypi.org/project/jsonpit/) — daemon-free distributed storage over Cloud Drives.**  
+> *100% lockstep parity with C# `pits v4.4.3` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).*
 
-## Quick Install
+`jpit` provides high-performance semantic living state search ("Pit-Grep"), time-travel inspection, and cloud-safe distributed ingestion across replicated JsonPits on OneDrive, Dropbox, and Google Drive.
+
+---
+
+## Installation & Upgrade
+
+### Recommended: Global CLI via `pipx` (Isolated)
+Install `jpit` in an isolated environment without dependency conflicts across your system:
 
 ```bash
-pip install jpit
+# Install jpit globally
+pipx install jpit
+
+# Upgrade to latest lockstep release (v4.4.3)
+pipx upgrade jpit
 ```
 
-Installing `jpit` installs the core `jsonpit` storage engine and provides both `jpit` and `jsonpit` command-line executables:
+### In a Project / Virtual Environment via `pip`
+```bash
+# Install
+pip install jpit
+
+# Upgrade
+pip install --upgrade jpit
+```
+
+*(Installing `jpit` automatically installs the `jsonpit` core storage engine and provisions both `jpit` and `jsonpit` command-line executables).*
+
+---
+
+## CLI Usage
 
 ```bash
 # Fast semantic search across one or all pits ("Pit-Grep"):
@@ -24,11 +49,20 @@ jpit history Person Rainer
 
 # Pipe JSON5 / JSON mutations directly into a pit:
 cat update.json5 | jpit put Person
-echo '{id: "AlanKay", dynabook: true}' | jpit put Person
+echo '{Id: "AlanKay", Dynabook: true}' | jpit put Person
+
+# Ingest single entity, keyed map, or array from file (CR043):
+jpit seed Activity -s PerformLive.json5
 
 # Set individual properties or tombstone an entity:
-jpit set Person AlanKay Status "Visionary"
+jpit set Person AlanKay '{"Status": "Visionary"}'
 jpit del Person ObsoleteEntity
 ```
 
-For full library documentation, distributed architecture details, and multi-agent coordination protocols, visit the official [jsonpit repository on GitHub](https://github.com/Burkhardt/jsonpit-python).
+---
+
+## Core Engine & Documentation
+
+For complete Python library documentation, distributed lease protocols, and multi-agent coordination architecture, visit:  
+👉 **[jsonpit on GitHub](https://github.com/Burkhardt/jsonpit-python)** · **[jsonpit on PyPI](https://pypi.org/project/jsonpit/)**
+
