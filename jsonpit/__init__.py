@@ -10,6 +10,7 @@ from .exceptions import (
 	PitInstanceConflictError,
 	PitNotFoundError,
 	ProtectedAttributeError,
+	StrictPatchValidationError,
 	TombstoneError,
 )
 from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuration_diagnostic
@@ -18,11 +19,7 @@ from .icons import Icons
 from .item import PitItem
 from .store import Pit, PitStore, parse_and_validate_seed_payload
 
-try:
-	import importlib.metadata
-	__version__ = importlib.metadata.version("jsonpit")
-except Exception:
-	__version__ = "4.4.4"
+__version__ = "4.4.5"
 
 __all__ = [
 	"Pit",
@@ -40,5 +37,6 @@ __all__ = [
 	"PitConcurrencyError",
 	"PitInstanceConflictError",
 	"ProtectedAttributeError",
+	"StrictPatchValidationError",
 	"TombstoneError",
 ]

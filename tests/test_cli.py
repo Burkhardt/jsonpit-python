@@ -129,7 +129,8 @@ def test_cli_version_flag(capsys: Any = None) -> None:
 	except SystemExit as ex:
 		assert ex.code == 0
 	from jsonpit import __version__
-	assert __version__ in f_out.getvalue()
+	out = f_out.getvalue().strip()
+	assert out in (f"jpit v{__version__}", f"jsonpit v{__version__}")
 
 
 def test_cli_flexible_option_placement(capsys: Any = None) -> None:

@@ -20,7 +20,12 @@ from typing import Any
 
 from .canonical import canonical_json, format_iso_timestamp, parse_iso_timestamp, utcnow
 from .config import OsConfig, loads_json5, missing_configuration_diagnostic
-from .exceptions import JsonPitError, PitNotFoundError, ProtectedAttributeError
+from .exceptions import (
+	JsonPitError,
+	PitNotFoundError,
+	ProtectedAttributeError,
+	StrictPatchValidationError,
+)
 from .fs import resolve_pit_target
 from .item import PitItem
 from .icons import Icons
@@ -395,7 +400,9 @@ def cmd_put(args: argparse.Namespace) -> int:
 	Ingests entities from stdin, piped jq output, or a JSON5 file.
 	Adds entities cloud-safely with leasing.
 	CR043: Supports single root entity, keyed entity map, or entity array.
+	CR047: Strict patch mode via --require-existing or --patch.
 	"""
+	require_existing = bool(getattr(args, "require_existing", False) or getattr(args, "patch", False))
 	source_path_str = getattr(args, "source", None)
 	if not source_path_str and getattr(args, "source_opt", None):
 		source_path_str = args.source_opt
@@ -422,9 +429,41 @@ def cmd_put(args: argparse.Namespace) -> int:
 		sys.stderr.write(f"[jpit] Error: {ex}\n")
 		return 1
 
+	if require_existing and not items_to_add:
+		sys.stderr.write("error: Patch source contained 0 entities.\n")
+		return 1
+
 	if not items_to_add:
 		print(f"[jpit] Seed source '{source_name}' contained 0 entities.")
 		return 0
+
+	# CR047: Strict patch mode pre-validation before opening target Pit for writing or creating flags
+	if require_existing:
+		try:
+			with Pit.open(
+				args.pit,
+				cloud=args.cloud,
+				root=args.root,
+				read_only=True,
+				unflagged=True,
+			) as living_state:
+				for raw_obj in items_to_add:
+					item_id = raw_obj["Id"]
+					if not living_state.contains(item_id, with_deleted=False):
+						sys.stderr.write(
+							f"error: Entity '{item_id}' does not exist in Pit '{living_state.pit_name}'. "
+							"Use without --require-existing / --patch to allow creating new entities.\n"
+						)
+						return 1
+		except PitNotFoundError:
+			sys.stderr.write(
+				f"error: Entity '{items_to_add[0]['Id']}' does not exist in Pit '{args.pit}'. "
+				"Use without --require-existing / --patch to allow creating new entities.\n"
+			)
+			return 1
+		except Exception as ex:
+			sys.stderr.write(f"[jpit] Error: {ex}\n")
+			return 1
 
 	with Pit.open(
 		args.pit,
@@ -464,13 +503,12 @@ def cmd_set(args: argparse.Namespace) -> int:
 		retain_window=getattr(args, "retain_window", False),
 	) as pit:
 		existing = pit.get(args.id)
-		if existing:
+		if existing is not None:
 			existing.set_property(payload)
-			pit.add(existing)
 		else:
-			payload["Id"] = args.id
-			new_item = PitItem(payload)
-			pit.add(new_item)
+			delta = dict(payload)
+			delta["Id"] = args.id
+			pit.add(PitItem(delta))
 
 	print(f"[jpit] Updated entity '{args.id}' in Pit '{args.pit}'.")
 	return 0
@@ -513,7 +551,6 @@ def cmd_delete_prop(args: argparse.Namespace) -> int:
 			sys.stderr.write(f"[jpit] Entity '{args.id}' not found.\n")
 			return 1
 		item.delete_property_path(args.property_path)
-		pit.add(item)
 
 	print(f"[jpit] Tombstoned property '{args.property_path}' on entity '{args.id}'.")
 	return 0
@@ -844,7 +881,7 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 		},
 		"put": {
-			"usage": "jpit put <PitName> [<source>] [-s <source>] [options]",
+			"usage": "jpit put <PitName> [<source>] [-s <source>] [--require-existing] [--patch] [options]",
 			"desc": "Ingest JSON5 entities from file or stdin pipe (alias: seed).",
 			"args": [
 				("PitName", "Pit name or file path"),
@@ -852,6 +889,8 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			],
 			"opts": [
 				("-s, --source <file>", "Source file for import (JSON or JSON5)"),
+				("--require-existing", "Reject batch if any entity does not already exist"),
+				("--patch", "Alias for --require-existing"),
 			],
 			"aliases": ["seed"],
 		},
@@ -1016,7 +1055,22 @@ class JsonPitArgumentParser(argparse.ArgumentParser):
 		sys.exit(2)
 
 
-def build_parser() -> JsonPitArgumentParser:
+def get_cli_prog_name(argv0: str | None = None) -> str:
+	"""Determines whether CLI is invoked as 'jsonpit' or 'jpit'."""
+	if argv0 is None:
+		argv0 = sys.argv[0] if sys.argv and sys.argv[0] else "jpit"
+	base = Path(argv0).name.lower()
+	if base == "jsonpit" or base.startswith("jsonpit"):
+		return "jsonpit"
+	if "jsonpit" in str(argv0).lower() and "jpit" not in base:
+		return "jsonpit"
+	return "jpit"
+
+
+def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
+	if prog is None:
+		prog = get_cli_prog_name()
+
 	common_parser = JsonPitArgumentParser(add_help=False)
 	common_parser.add_argument(
 		"-c", "--cloud",
@@ -1042,15 +1096,15 @@ def build_parser() -> JsonPitArgumentParser:
 	)
 
 	parser = JsonPitArgumentParser(
-		prog="jpit",
-		description="jpit — Cloud-first distributed replicated storage CLI and Pit-Grep.",
+		prog=prog,
+		description=f"{prog} — Cloud-first distributed replicated storage CLI and Pit-Grep.",
 		parents=[common_parser],
 	)
 	parser.add_argument(
 		"-v",
 		"--version",
 		action="version",
-		version=f"%(prog)s {__version__}",
+		version=f"%(prog)s v{__version__}",
 	)
 
 	subparsers = parser.add_subparsers(dest="command", required=True, parser_class=JsonPitArgumentParser)
@@ -1101,6 +1155,18 @@ def build_parser() -> JsonPitArgumentParser:
 	p_put.add_argument("pit", help="Pit name")
 	p_put.add_argument("source", nargs="?", default=None, help="Source file or '-' for stdin")
 	p_put.add_argument("-s", "--source", dest="source_opt", help="Source file for import (JSON or JSON5)")
+	p_put.add_argument(
+		"--require-existing",
+		action="store_true",
+		default=False,
+		help="CR047: Strictly require all incoming entity IDs to exist in the Pit",
+	)
+	p_put.add_argument(
+		"--patch",
+		action="store_true",
+		default=False,
+		help="CR047: Alias for --require-existing",
+	)
 
 	# set
 	p_set = subparsers.add_parser("set", parents=[common_parser], help="Set or patch entity with JSON5 payload")

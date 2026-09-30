@@ -11,6 +11,7 @@ import datetime
 import json
 from collections.abc import Iterator, MutableMapping
 from typing import Any
+import weakref
 
 from .canonical import (
 	canonical_json,
@@ -84,13 +85,17 @@ class PitItem(MutableMapping[str, Any]):
 		deleted: bool = False,
 		modified: datetime.datetime | None = None,
 		invalidate: bool = True,
+		pit: Any | None = None,
 	) -> None:
 		self._data: dict[str, Any] = {}
 		self._dirty: bool = False
+		self._pit_ref: weakref.ref[Any] | None = weakref.ref(pit) if pit is not None else None
 
 		if isinstance(initial, PitItem):
 			self._data = copy.deepcopy(initial._data)
 			self._dirty = initial._dirty
+			if pit is not None:
+				self._pit_ref = weakref.ref(pit)
 			if id is not None:
 				self._data["Id"] = id
 			if note:
@@ -152,6 +157,16 @@ class PitItem(MutableMapping[str, Any]):
 			self.invalidate()
 		else:
 			self.validate()
+
+	def bind(self, pit: Any) -> PitItem:
+		"""Binds this living entity to its parent Pit container."""
+		self._pit_ref = weakref.ref(pit) if pit is not None else None
+		return self
+
+	@property
+	def pit(self) -> Any | None:
+		"""Returns the parent Pit if bound and alive, else None."""
+		return self._pit_ref() if self._pit_ref is not None else None
 
 	# --- Property Accessors ---
 
@@ -264,15 +279,22 @@ class PitItem(MutableMapping[str, Any]):
 		"""
 		Appends a property tombstone by setting the top-level property to None (JSON null).
 		Resets Deleted to False and marks the entity dirty.
+		If bound to a Pit, automatically dispatches a sparse tombstone delta.
 		"""
 		self.deleted = False
 		self.invalidate()
 		self._data[property_name] = None
+		p = self.pit
+		if p is not None:
+			mutation = PitItem(id=self.id)
+			mutation.delete_property(property_name)
+			p.add(mutation)
 
 	def delete_property_path(self, property_path: str) -> None:
 		"""
 		Appends a property tombstone at a dot-delimited nested JSON path (e.g. 'Address.City').
 		Sets the leaf property to None (JSON null), resets Deleted to False, and marks dirty.
+		If bound to a Pit, automatically dispatches a sparse tombstone delta.
 		"""
 		if not property_path or not property_path.strip():
 			raise TombstoneError("A property path is required.")
@@ -304,11 +326,17 @@ class PitItem(MutableMapping[str, Any]):
 		container[segments[-1]] = None
 		self.deleted = False
 		self.invalidate()
+		p = self.pit
+		if p is not None:
+			mutation = PitItem(id=self.id)
+			mutation.delete_property_path(property_path)
+			p.add(mutation)
 
 	def delete(self, by: str | None = None, backdate_100: bool = True) -> bool:
 		"""
 		Tombstones this item. Appends an audit trail to Note.
 		If backdate_100 is True, preserves precedence by backdating Modified by 100 seconds.
+		If bound to a Pit, dispatches the tombstone to the Pit.
 		Returns True if newly deleted, False if already deleted.
 		"""
 		if self.deleted:
@@ -325,14 +353,13 @@ class PitItem(MutableMapping[str, Any]):
 		if by:
 			audit_entry += f" by {by}"
 		self.note = f"{audit_entry};\n{self.note}" if self.note else f"{audit_entry};"
+		p = self.pit
+		if p is not None:
+			p.delete_item(self.id, by=by, backdate_100=backdate_100)
 		return True
 
-	def extend_with(self, obj: dict[str, Any]) -> bool:
-		"""
-		Deep merges a dictionary into this entity.
-		Arrays are replaced; objects are recursively merged; nulls (tombstones) are preserved.
-		Returns True if any value was modified.
-		"""
+	def _apply_extend(self, obj: dict[str, Any]) -> bool:
+		"""In-memory deep merge without dispatching to parent Pit."""
 		original_canonical = canonical_json(self.to_dict())
 
 		def _deep_merge(target: dict[str, Any], source: dict[str, Any]) -> None:
@@ -347,6 +374,21 @@ class PitItem(MutableMapping[str, Any]):
 		if changed:
 			self.deleted = False
 			self.invalidate()
+		return changed
+
+	def extend_with(self, obj: dict[str, Any]) -> bool:
+		"""
+		Deep merges a dictionary into this entity.
+		Arrays are replaced; objects are recursively merged; nulls (tombstones) are preserved.
+		If bound to a Pit, automatically dispatches a sparse delta fragment.
+		Returns True if any value was modified.
+		"""
+		changed = self._apply_extend(obj)
+		p = self.pit
+		if changed and p is not None:
+			delta = copy.deepcopy(obj)
+			delta["Id"] = self.id
+			p.add(PitItem(delta))
 		return changed
 
 	def extend(self, json_string: str) -> bool:
@@ -418,10 +460,19 @@ class PitItem(MutableMapping[str, Any]):
 		else:
 			self._data[key] = value
 			self.invalidate()
+			p = self.pit
+			if p is not None:
+				p.add(PitItem({"Id": self.id, key: value}))
 
 	def __delitem__(self, key: str) -> None:
-		del self._data[key]
+		if key in self._data:
+			del self._data[key]
 		self.invalidate()
+		p = self.pit
+		if p is not None:
+			mutation = PitItem(id=self.id)
+			mutation.delete_property(key)
+			p.add(mutation)
 
 	def __iter__(self) -> Iterator[str]:
 		# Ensure Id, Modified, Deleted are always visible in key enumeration

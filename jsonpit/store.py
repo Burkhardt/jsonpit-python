@@ -29,6 +29,7 @@ from .exceptions import (
 	PitInstanceConflictError,
 	PitNotFoundError,
 	ProtectedAttributeError,
+	StrictPatchValidationError,
 )
 from .flags import (
 	MasterFlagFile,
@@ -417,11 +418,12 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 				raise
 			raise PitCorruptError(f"Failed to parse pit file {self.canonical_file}: {ex}") from ex
 
-	def seed_from_file(self, file_path: Path | str) -> int:
+	def seed_from_file(self, file_path: Path | str, require_existing: bool = False) -> int:
 		"""
 		Ingests a seed file (JSON or JSON5) and adds all entities to the pit.
 		Returns count of imported entities.
 		CR043: Validates payload shape and entities strictly before mutation.
+		CR047: If require_existing is True, validates that all IDs exist in living state.
 		"""
 		path = Path(file_path)
 		if not path.is_file():
@@ -429,6 +431,17 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 
 		text = path.read_text(encoding="utf-8")
 		items_to_add = parse_and_validate_seed_payload(text, str(path))
+
+		if require_existing:
+			if not items_to_add:
+				raise StrictPatchValidationError("Patch source contained 0 entities.")
+			for raw_obj in items_to_add:
+				item_id = raw_obj["Id"]
+				if not self.contains(item_id, with_deleted=False):
+					raise StrictPatchValidationError(
+						f"Entity '{item_id}' does not exist in Pit '{self.pit_name}'. "
+						"Use without --require-existing / --patch to allow creating new entities."
+					)
 
 		count = 0
 		for raw_obj in items_to_add:
@@ -647,6 +660,8 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		if pit_items is None:
 			return default
 		projected = pit_items.project_state(at=at, with_deleted=with_deleted)
+		if projected is not None and at is None and not self.read_only:
+			projected.bind(self)
 		return projected if projected is not None else default
 
 	def get_at(
@@ -657,6 +672,12 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 	) -> PitItem | None:
 		"""Point-in-time historical projection of an entity."""
 		return self.get(item_id, at=at, with_deleted=with_deleted)
+
+	def contains(self, item_id: str, with_deleted: bool = False) -> bool:
+		"""100% C# parity: checks if an entity exists in living state."""
+		if not item_id:
+			return False
+		return self.get(item_id, with_deleted=with_deleted) is not None
 
 	def all_undeleted(self) -> list[PitItem]:
 		"""Returns all active, non-deleted entities in this pit."""

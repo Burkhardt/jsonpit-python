@@ -1,0 +1,77 @@
+@startuml jsonpitCD
+skinparam classAttributeIconSize 0
+skinparam monochrome true
+skinparam shadowing false
+
+abstract class JsonPitBase {
+  + pit_name : str
+  + pit_dir : Path
+  + canonical_file : Path
+  + subscriber : str | None
+  + read_only : bool
+  + backup : bool
+  + unflagged : bool
+  + retain_window : bool
+}
+
+class Pit {
+  - _historic_items : dict<str, PitItems>
+  + default_max_count : int
+  .. Adding PitItem to Pit ..
+  + add(item: PitItem, refresh_modified: bool = True) : bool
+  + add_historical(item: PitItem) : bool
+  + __setitem__(item_id: str, item: PitItem) : void
+  .. Adding JSON Object to Pit ..
+  + __setitem__(item_id: str, json_obj: dict) : void
+  + seed_from_file(file_path: Path | str) : int
+  .. Query & Lifecycle ..
+  + get(item_id: str, default: Any = None, at: datetime = None, with_deleted: bool = False) : PitItem | None
+  + get_at(item_id: str, at: datetime, with_deleted: bool = False) : PitItem | None
+  + __getitem__(item_id: str) : PitItem
+  + delete_item(item_id: str, by: str | None = None, backdate_100: bool = False) : bool
+  + rename_id(old_key: str, new_key: str, by: str | None = None) : bool
+  + save(force: bool = False, pretty: bool = False) : void
+}
+
+class PitItems {
+  - _key : str
+  - _history : tuple<PitItem, ...>
+  - _max_count : int
+  + create(key: str, max_count: int = 10) : PitItems
+  + push(item: PitItem) : PitItems
+  + latest_fragment() : PitItem | None
+  + project_state(at: datetime = None, with_deleted: bool = False) : PitItem | None
+}
+
+class PitItem {
+  - _data : dict<str, Any>
+  - _pit_ref : weakref<Pit> | None
+  + id : str
+  + modified : datetime
+  + deleted : bool
+  + note : str
+  + pit : Pit | None
+  + bind(pit: Pit) : PitItem
+  + is_valid() : bool
+  + validate() : void
+  + invalidate() : void
+  .. Adding Key/Value Pair to PitItem ..
+  + __setitem__(key: str, value: Any) : void
+  + delete_property(property_name: str) : void
+  + delete_property_path(property_path: str) : void
+  + delete(by: str | None = None, backdate_100: bool = True) : bool
+  .. Adding JSON Object to PitItem ..
+  + set_property(patch: dict | str) : bool
+  + extend_with(obj: dict) : bool
+  + extend(json_string: str) : bool
+  .. Serialization ..
+  + to_dict() : dict
+  + to_json(indent: int | None = None) : str
+}
+
+JsonPitBase <|-- Pit
+Pit "1" *-- "0..*" PitItems : internal history map
+PitItems "1" o-- "0..*" PitItem : immutable fragment stack
+Pit ..> PitItem : produces bound living entity
+PitItem o--> "0..1" Pit : _pit_ref (dispatches sparse deltas)
+@enduml

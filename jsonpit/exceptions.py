@@ -29,3 +29,7 @@ class TombstoneError(JsonPitError):
 
 class ProtectedAttributeError(JsonPitError, ValueError):
 	"""Raised when attempting to manually mutate or inject protected lifecycle attributes (Modified, Deleted, Id)."""
+
+
+class StrictPatchValidationError(JsonPitError, ValueError):
+	"""CR047: Raised when --require-existing / --patch validation fails."""

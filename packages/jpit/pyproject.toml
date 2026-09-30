@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jpit"
-version = "4.4.4"
+version = "4.4.5"
 description = "CLI companion and alias for jsonpit — daemon-free distributed storage over Cloud Drives."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -13,7 +13,7 @@ authors = [
 	{ name = "Dr. Rainer Burkhardt" },
 ]
 classifiers = [
-	"Development Status :: 4 - Beta",
+	"Development Status :: 5 - Production/Stable",
 	"Intended Audience :: Developers",
 	"Operating System :: OS Independent",
 	"Programming Language :: Python :: 3",
@@ -22,7 +22,7 @@ classifiers = [
 	"Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-	"jsonpit>=4.4.4",
+	"jsonpit>=4.4.5",
 ]
 
 [project.scripts]
