@@ -43,6 +43,7 @@ packages = ["jsonpit"]
 only-include = [
 	"jsonpit",
 	"README.md",
+	"API.md",
 	"pyproject.toml",
 ]
 

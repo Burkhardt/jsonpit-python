@@ -93,5 +93,5 @@ jpit del Person ObsoleteEntity
 ## Core Engine & Documentation
 
 For complete Python library documentation, distributed lease protocols, and multi-agent coordination architecture, visit:  
-👉 **[jsonpit on GitHub](https://github.com/Burkhardt/jsonpit-python)** · **[jsonpit on PyPI](https://pypi.org/project/jsonpit/)**
+👉 **[jsonpit on GitHub](https://github.com/Burkhardt/jsonpit-python)** · **[API Reference (API.md)](https://github.com/Burkhardt/jsonpit-python/blob/main/API.md)** · **[jsonpit on PyPI](https://pypi.org/project/jsonpit/)**
 

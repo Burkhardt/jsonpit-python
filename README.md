@@ -32,6 +32,23 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
+## Object-Oriented Architecture
+
+`jsonpit` models distributed state through rich, encapsulated domain classes implementing standard Python protocols (`MutableMapping`, `ContextManager`):
+
+- **`Pit`**: Living collection and coordinator of distributed leases, change files, and storage compaction.
+- **`PitItem`**: Polymorphic living entity. Emits pure sparse deltas without read-modify-write cycles (CR040).
+- **`PitItems`**: Immutable fragment stack managing value history and accurate point-in-time state projection.
+- **`JsonPitBase`**: Shared foundation for storage resolution, subscriber roles, and cloud synchronization.
+
+<p align="center">
+  <img src="doc/uml/jsonpitCD.svg" alt="jsonpit Class Diagram" width="720"/>
+</p>
+
+> 📖 **Full API Reference:** For comprehensive method signatures, exception contracts, and protocol details, see **[API.md](API.md)**.
+
+---
+
 ## Installation & Upgrade
 
 ### As a Global CLI Tool (`jpit`) via `pipx` (Recommended)
