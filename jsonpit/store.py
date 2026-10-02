@@ -110,6 +110,12 @@ def parse_and_validate_seed_payload(
 			raise ValueError(
 				f"Source '{source_name}' contains an entity without a non-empty string 'Id'."
 			)
+		val = str(item["Id"])
+		if "{" in val or "<" in val:
+			raise ValueError(
+				f"Entity Id '{val}' contains a prohibited template marker ('{{' or '<'). "
+				"Resolve template placeholders before writing to a Pit."
+			)
 		PitItem.validate_client_payload(item)
 		validated.append(item)
 
@@ -459,6 +465,11 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		"""
 		if not item.id:
 			raise ValueError("PitItem must have a non-empty Id.")
+		if not item.deleted and ("{" in item.id or "<" in item.id):
+			raise ValueError(
+				f"Entity Id '{item.id}' contains a prohibited template marker ('{{' or '<'). "
+				"Resolve template placeholders before writing to a Pit."
+			)
 
 		with self._locker:
 			if refresh_modified:

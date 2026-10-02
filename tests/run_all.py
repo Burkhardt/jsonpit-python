@@ -23,6 +23,7 @@ def run_suite() -> int:
 	import tests.test_cr043_seed_shapes as t_cr043
 	import tests.test_cr044_missing_config as t_cr044
 	import tests.test_cr047_strict_patch as t_cr047
+	import tests.test_cr049_live_id_validation as t_cr049
 	import tests.test_csharp_compatibility as t_compat
 	import tests.test_delete_property_projection as t_dp
 	import tests.test_equal_timestamp_ordering as t_equal
@@ -43,6 +44,7 @@ def run_suite() -> int:
 		("test_cr043_seed_shapes", t_cr043),
 		("test_cr044_missing_config", t_cr044),
 		("test_cr047_strict_patch", t_cr047),
+		("test_cr049_live_id_validation", t_cr049),
 		("test_sparse_delta", t_sparse),
 		("test_sequence_suites", t_seq),
 	]

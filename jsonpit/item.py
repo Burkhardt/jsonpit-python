@@ -265,9 +265,17 @@ class PitItem(MutableMapping[str, Any]):
 		"""
 		Validates a client entity payload before live ingestion.
 		CR040: Lifecycle attributes (Modified, Deleted) are reserved for historical replay.
+		CR049: Prohibit template markers '{' or '<' in entity ID.
 		"""
 		if not isinstance(payload, dict):
 			raise ValueError("Client payload must evaluate to a dictionary.")
+		if "Id" in payload:
+			val = str(payload["Id"])
+			if "{" in val or "<" in val:
+				raise ValueError(
+					f"Entity Id '{val}' contains a prohibited template marker ('{{' or '<'). "
+					"Resolve template placeholders before writing to a Pit."
+				)
 		for k in payload:
 			if k.lower() in ("modified", "deleted"):
 				raise ProtectedAttributeError(

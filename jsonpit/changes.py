@@ -59,21 +59,22 @@ class ChangeFile:
 		cls,
 		fragment: PitItem,
 		exact_process_identity: str,
-		include_sha: bool = False,
+		include_sha: bool = True,
 	) -> str:
-		"""Composes the change-file stem directly from a PitItem fragment."""
+		"""Composes the change-file stem directly from a PitItem fragment with 4-char checksum."""
 		if include_sha:
 			_, sha = cls.canonical_payload_for(fragment)
-			return cls.compose_name(fragment.modified, exact_process_identity, sha)
+			return cls.compose_name(fragment.modified, exact_process_identity, sha[:4])
 		return cls.compose_name(fragment.modified, exact_process_identity)
 
 	@staticmethod
 	def try_parse_name(name_without_extension: str) -> tuple[int, str, str | None] | None:
 		"""
 		Parses a change-file name without extension.
-		Supports both CR041 clean format ({ticks}_{identity}) and
+		Supports 4-character checksum format ({ticks}_{identity}_{sha4}),
+		CR041 clean format ({ticks}_{identity}), and
 		CR003 legacy format ({ticks}_{identity}_{sha256}).
-		Returns (utc_ticks, exact_process_identity, sha256_or_none) or None if invalid.
+		Returns (utc_ticks, exact_process_identity, sha_or_none) or None if invalid.
 		"""
 		if not name_without_extension:
 			return None
@@ -91,10 +92,12 @@ class ChangeFile:
 		remainder = name_without_extension[first_sep + 1 :]
 		last_sep = remainder.rfind("_")
 
-		# Check if remainder has a trailing 64-char hex SHA (CR003 legacy format)
+		# Check if remainder has a trailing 4-char or 64-char hex checksum
 		if last_sep > 0:
 			sha_candidate = remainder[last_sep + 1 :]
-			if len(sha_candidate) == 64 and all(c in "0123456789abcdef" for c in sha_candidate.lower()):
+			if (len(sha_candidate) == 4 or len(sha_candidate) == 64) and all(
+				c in "0123456789abcdef" for c in sha_candidate.lower()
+			):
 				identity = remainder[:last_sep]
 				if identity:
 					return ticks, identity, sha_candidate.lower()
@@ -117,8 +120,8 @@ class ChangeFile:
 	def read_validated(cls, file_path: Path) -> list[list[dict[str, Any]]] | None:
 		"""
 		Reads and validates a change file.
-		For legacy files with embedded SHA-256, verifies content matches hash.
-		For clean CR041 files, verifies valid JSON structure.
+		For files with embedded checksum (4-char or 64-char), verifies content matches prefix.
+		For clean unhashed CR041 files, verifies valid JSON structure.
 		Returns parsed JSON payload or None if invalid or corrupt.
 		"""
 		content = safe_read_text(file_path)
@@ -130,7 +133,7 @@ class ChangeFile:
 			_, _, expected_sha = parsed_meta
 			if expected_sha is not None:
 				actual_sha = sha256_hex(content)
-				if actual_sha != expected_sha:
+				if not actual_sha.startswith(expected_sha.lower()):
 					return None
 
 		try:
@@ -149,12 +152,12 @@ class ChangeFile:
 		exact_process_identity: str,
 	) -> Path:
 		"""
-		Writes a fragment as an ordinary collision-safe clean change file in pit_dir (CR041).
-		Filename: {Modified.UtcTicks}_{ExactProcessIdentity}.json.
+		Writes a fragment as an ordinary collision-safe clean change file with 4-char checksum.
+		Filename: {Modified.UtcTicks}_{ExactProcessIdentity}_{Sha4}.json.
 		Exact byte contract: canonical UTF-8 JSON without trailing newline.
 		"""
-		payload, _ = cls.canonical_payload_for(fragment)
-		stem = cls.compose_name(fragment.modified, exact_process_identity)
+		payload, sha = cls.canonical_payload_for(fragment)
+		stem = cls.compose_name(fragment.modified, exact_process_identity, sha[:4])
 		target_path = pit_dir / f"{stem}.json"
 
 		if not target_path.is_file():

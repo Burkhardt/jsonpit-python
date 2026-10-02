@@ -18,6 +18,16 @@ def test_change_file_name_round_trip() -> None:
 	now = utcnow()
 	identity = "Nkosikazi-pits-59346"
 	sha = "015abd7f5cc57a2dd94b7590f04ad8084273905ee33ec5cebeae62276a97f862"
+	hash4 = "a3f7"
+
+	# 4-character checksum format: {ticks}_{identity}_{sha4}
+	h4_name = ChangeFile.compose_name(now, identity, hash4)
+	h4_parsed = ChangeFile.try_parse_name(h4_name)
+	assert h4_parsed is not None
+	ticks_4, id_4, sha_4 = h4_parsed
+	assert id_4 == identity
+	assert sha_4 == hash4
+	assert ChangeFile.identity_of(h4_name) == identity
 
 	# CR041 clean format: {ticks}_{identity}
 	clean_name = ChangeFile.compose_name(now, identity)
@@ -47,9 +57,10 @@ def test_change_file_creation_and_validation() -> None:
 		change_path = ChangeFile.create(pit_dir, item, "TestHost-openclaw-101")
 		assert change_path.is_file()
 
-		# CR041: file stem has exactly 1 underscore separating ticks and identity
-		assert change_path.stem.count("_") == 1
-		assert not any(len(part) == 64 for part in change_path.stem.split("_"))
+		# 4-char checksum: file stem has 2 underscores separating ticks, identity, and 4-char sha
+		parts = change_path.stem.split("_")
+		assert len(parts) == 3
+		assert len(parts[2]) == 4
 
 		# Validated read
 		payload = ChangeFile.read_validated(change_path)
@@ -58,6 +69,10 @@ def test_change_file_creation_and_validation() -> None:
 		assert len(payload[0]) == 1
 		assert payload[0][0]["Id"] == "Artist_Hugh"
 		assert payload[0][0]["Genre"] == "Jazz"
+
+		# Truncated or modified payload fails prefix validation
+		change_path.write_text("[]", encoding="utf-8")
+		assert ChangeFile.read_validated(change_path) is None
 
 
 def test_receipt_file_grace_period() -> None:

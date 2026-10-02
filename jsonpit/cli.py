@@ -426,7 +426,11 @@ def cmd_put(args: argparse.Namespace) -> int:
 	try:
 		items_to_add = parse_and_validate_seed_payload(content, source_name)
 	except (ValueError, ProtectedAttributeError) as ex:
-		sys.stderr.write(f"[jpit] Error: {ex}\n")
+		msg = str(ex)
+		if "contains a prohibited template marker" in msg:
+			sys.stderr.write(f"error: {msg}\n")
+		else:
+			sys.stderr.write(f"[jpit] Error: {msg}\n")
 		return 1
 
 	if require_existing and not items_to_add:
