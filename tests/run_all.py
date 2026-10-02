@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 
 def run_suite() -> int:
+	import tests.test_audit as t_audit
 	import tests.test_canonical as t_canon
 	import tests.test_change_file as t_change
 	import tests.test_cli as t_cli
@@ -34,6 +35,7 @@ def run_suite() -> int:
 	import tests.test_sparse_delta as t_sparse
 
 	modules = [
+		("test_audit", t_audit),
 		("test_canonical", t_canon),
 		("test_csharp_compatibility", t_compat),
 		("test_pit_item", t_item),

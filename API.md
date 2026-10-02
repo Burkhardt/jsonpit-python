@@ -134,6 +134,56 @@ This document provides a foldable, searchable reference for the public `jsonpit`
 
 ---
 
+## Audit Engine & Recovery Inspection
+
+- <details>
+  <summary><code>PitAudit</code>: Read-only inspection of durable event logs</summary>
+
+  Provides read-only access to durable JsonPit recovery events under `Events/` without opening a `Pit`, creating process activity flags, acquiring leases, or mutating disk state (CR003, coordinated v3.13.2). Inspects both loose `*.event` files and immutable `Events_*.zip` compaction archives.
+
+  **Key Methods:**
+  - `PitAudit.inspect(pit_directory: Path | str, machine_filter: str = "all", min_level: LogLevel = LogLevel.TRACE) -> PitAuditReadResult`: Reads, validates, deduplicates by `EventId`, filters by machine/severity, and orders events deterministically by machine, UTC time, and event identity.
+  </details>
+
+- <details>
+  <summary><code>PitAuditEvent</code>: Durable recovery event domain model</summary>
+
+  Encapsulates a single durable recovery event:
+  - `file_name: str`: Source file or archive entry name.
+  - `content: dict[str, Any]`: Raw deserialized event JSON object.
+  - `machine: str`: Originating machine hostname.
+  - `utc_time: datetime`: Event occurrence timestamp in UTC.
+  - `level: LogLevel`: Severity level.
+  - `stage: str`: Pit lifecycle stage (e.g. `ChangeFilesPublished`, `CleanupPending`, `Completed`).
+  - `event_id: str`: Unique GUID event identifier used for cross-archive deduplication.
+  - `message: str`: Human-readable summary message.
+  </details>
+
+- <details>
+  <summary><code>LogLevel</code>: Event severity enumeration</summary>
+
+  Matches .NET `LogLevel` integer values and names:
+  - `TRACE = 0` (`Trace`)
+  - `DEBUG = 1` (`Debug`)
+  - `INFORMATION = 2` (`Information` / `info`)
+  - `WARNING = 3` (`Warning` / `warn`)
+  - `ERROR = 4` (`Error` / `err`)
+  - `CRITICAL = 5` (`Critical` / `fatal`)
+  - `from_string(name: str) -> LogLevel`: Case-insensitive parsing supporting names, aliases, and integer strings.
+  - `display_name -> str`: Capitalized canonical name matching C# output formatting.
+  </details>
+
+- <details>
+  <summary><code>PitAuditReadResult</code>: Filtered events and diagnostic issues</summary>
+
+  Contains:
+  - `events: list[PitAuditEvent]`: Filtered and ordinally sorted events.
+  - `issues: list[str]`: Physical corruption, empty file, or conflicting event identity warnings.
+  - `succeeded: bool`: Returns `True` if no diagnostic issues were discovered.
+  </details>
+
+---
+
 ## Exception Hierarchy
 
 All `jsonpit` exceptions derive from `JsonPitError`:

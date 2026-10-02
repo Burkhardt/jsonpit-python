@@ -13,6 +13,12 @@ from .exceptions import (
 	StrictPatchValidationError,
 	TombstoneError,
 )
+from .audit import (
+	LogLevel,
+	PitAudit,
+	PitAuditEvent,
+	PitAuditReadResult,
+)
 from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuration_diagnostic
 from .history import PitItems
 from .icons import Icons
@@ -35,6 +41,10 @@ __all__ = [
 	"parse_and_validate_seed_payload",
 	"PitItem",
 	"PitItems",
+	"LogLevel",
+	"PitAuditEvent",
+	"PitAuditReadResult",
+	"PitAudit",
 	"OsConfig",
 	"DEFAULT_CONFIG_FILE_LOCATION",
 	"missing_configuration_diagnostic",

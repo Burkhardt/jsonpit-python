@@ -230,9 +230,9 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		# If pits is not on PATH, skip cross-CLI test
 		return
 
-	# Confirm pits reports v4.4.5
+	# Confirm pits reports current version matching jpit
 	res_v = subprocess.run([pits_bin, "-v"], capture_output=True, text=True, check=True)
-	assert res_v.stdout.strip() == "pits v4.4.5"
+	assert res_v.stdout.strip() == f"pits v{__version__}"
 
 	with tempfile.TemporaryDirectory() as tmpdir:
 		pit_root = Path(tmpdir)

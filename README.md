@@ -180,6 +180,11 @@ jpit del Person ObsoleteEntity
 jpit maintain Activity -c OneDrive -r AIA
 jpit maintain Activity -c OneDrive -r AIA --apply --prune-process-flags --older-than 01:00:00 --json
 jpit maintain --wwwa -c OneDrive -r AIA --apply --prune-process-flags --older-than 7.00:00:00
+
+# Read-only audit of durable recovery events (100% C# pits audit parity):
+jpit audit Activity -c OneDrive -r AIA
+jpit audit Activity -c OneDrive -r AIA --machine local --level Warning
+jpit audit --wwwa -c OneDrive -r AIA --json
 ```
 
 ---

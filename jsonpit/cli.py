@@ -18,6 +18,7 @@ import subprocess
 import sys
 from typing import Any
 
+from .audit import LogLevel, PitAudit, PitAuditEvent, PitAuditReadResult
 from .canonical import canonical_json, format_iso_timestamp, parse_iso_timestamp, utcnow
 from .config import OsConfig, loads_json5, missing_configuration_diagnostic
 from .exceptions import (
@@ -919,6 +920,102 @@ def cmd_maintain(args: argparse.Namespace) -> int:
 	return 0 if all(r.succeeded for r in results) else 1
 
 
+def cmd_audit(args: argparse.Namespace) -> int:
+	"""
+	Read-only audit of durable JsonPit recovery events (CR003).
+	Reads Events directory content without opening a Pit, creating process flags,
+	or acquiring leases. Provides 100% parity with C# pits audit.
+	"""
+	wwwa = getattr(args, "wwwa", False)
+	pit_param = getattr(args, "pit", None)
+
+	if wwwa and pit_param:
+		sys.stderr.write("[jpit] Error: audit accepts either <PitName> or --wwwa, not both.\n")
+		return 1
+	if not wwwa and not pit_param:
+		sys.stderr.write("[jpit] Error: audit requires exactly one <PitName>, or --wwwa.\n")
+		return 1
+
+	machine_filter = getattr(args, "machine", "all") or "all"
+	level_raw = getattr(args, "level", "Trace") or "Trace"
+	json_output = getattr(args, "json", False)
+
+	try:
+		min_level = LogLevel.from_string(level_raw)
+	except ValueError as ex:
+		sys.stderr.write(f"[jpit] Error: {ex}\n")
+		return 1
+
+	cloud = getattr(args, "cloud", "OneDrive")
+	root = getattr(args, "root", None)
+
+	directories: list[Path] = []
+
+	if wwwa:
+		base_dir: Path | None = None
+		if root:
+			r_path = Path(os.path.expanduser(root))
+			if r_path.is_dir():
+				base_dir = r_path
+		if base_dir is None:
+			cfg = OsConfig.load()
+			if not cfg.is_config_loaded:
+				sys.stderr.write(f"[jpit] Error: {missing_configuration_diagnostic()}\n")
+				return 1
+			cloud_root = cfg.get_cloud_root(cloud)
+			if not cloud_root or not cloud_root.is_dir():
+				sys.stderr.write(f"[jpit] Error: Cloud provider '{cloud}' root directory not found.\n")
+				return 1
+			base_dir = cloud_root / root.strip("/\\") if root else cloud_root
+
+		for name in WWWA_PITS:
+			directories.append(base_dir / name)
+	else:
+		try:
+			p_dir, _ = resolve_pit_target(pit_param, cloud=cloud, root=root)
+		except Exception as ex:
+			sys.stderr.write(f"[jpit] Error: {ex}\n")
+			return 1
+		directories.append(p_dir)
+
+	reads = [
+		(d, PitAudit.inspect(d, machine_filter=machine_filter, min_level=min_level))
+		for d in directories
+	]
+
+	events: list[PitAuditEvent] = []
+	for _, res in reads:
+		events.extend(res.events)
+	events.sort(key=lambda e: (e.machine, e.utc_time, e.event_id))
+
+	issues: list[str] = []
+	for d, res in reads:
+		for issue in res.issues:
+			issues.append(f"{d}: {issue}")
+
+	if json_output:
+		sys.stdout.write(json.dumps([e.content for e in events], indent=2) + "\n")
+		for issue in issues:
+			sys.stderr.write(f"Audit warning: {issue}\n")
+		return 0 if len(issues) == 0 else 1
+
+	if len(events) == 0:
+		dirs_str = ", ".join(str(d / "Events") for d in directories)
+		sys.stdout.write(f"No matching events under {dirs_str}.\n")
+		for issue in issues:
+			sys.stderr.write(f"Audit warning: {issue}\n")
+		return 0 if len(issues) == 0 else 1
+
+	for e in events:
+		iso_time = format_iso_timestamp(e.utc_time)
+		sys.stdout.write(f"{e.machine}\t{iso_time}\t{e.level.display_name}\t{e.stage}\t{e.message}\t({e.file_name})\n")
+
+	for issue in issues:
+		sys.stderr.write(f"Audit warning: {issue}\n")
+
+	return 0 if len(issues) == 0 else 1
+
+
 def get_cloud_options_description(use_color: bool = True) -> str:
 	"""Builds the cloud provider options line with brand-specific badge glyphs."""
 	try:
@@ -970,7 +1067,7 @@ def print_top_help(
 	i_folder = color(Icons.FOLDER, C_YELLOW, use_color)
 	i_banner = color(Icons.BANNER, C_CYAN, use_color)
 
-	cmd_list = "grep, get, history, list, put, set, del, del-prop, rename, export, status, pits, maintain"
+	cmd_list = "grep, get, history, list, put, set, del, del-prop, rename, export, status, pits, maintain, audit"
 	sys.stdout.write(f"{c_cmd}\t{i_info}\t{cmd_list}\n")
 
 	commands_spec = [
@@ -987,6 +1084,7 @@ def print_top_help(
 		("status", "<PitName>"),
 		("pits", "[-r <root>] [-c <cloud>] [--json] (discover available pits)"),
 		("maintain", "(<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--json]"),
+		("audit", "(<PitName> | --wwwa) [--machine <all|local|name>] [--level <severity>] [--json]"),
 	]
 	for cmd, spec in commands_spec:
 		cmd_str = color(f"  jpit {cmd}", C_GREEN, use_color)
@@ -1202,6 +1300,19 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 				("--repair-legacy-extensions", "Repair legacy event extensions (requires --apply)"),
 				("--archive-events", "Archive loose event files into immutable archives"),
 				("--json", "Output maintenance report as JSON"),
+			],
+		},
+		"audit": {
+			"usage": "jpit audit (<PitName> | --wwwa) [--machine <all|local|name>] [--level <severity>] [--json] [options]",
+			"desc": "Read-only audit of durable JsonPit recovery events without acquiring leases or flags.",
+			"args": [
+				("PitName", "Pit name or file path (optional if --wwwa is used)"),
+			],
+			"opts": [
+				("--wwwa", "Audit all four WWWA pits (Person, Object, Place, Activity)"),
+				("--machine <name>", "Filter events by originating machine ('all', 'local', or machine name)"),
+				("--level <severity>", "Minimum severity level filter (default: Trace)"),
+				("--json", "Output audit events as JSON array"),
 			],
 		},
 	}
@@ -1474,6 +1585,18 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 	p_maintain.add_argument("--archive-events", action="store_true", default=False, help="Archive loose event files into immutable archives")
 	p_maintain.add_argument("--json", action="store_true", default=False, help="Output maintenance report as JSON")
 
+	# audit
+	p_audit = subparsers.add_parser(
+		"audit",
+		parents=[common_parser],
+		help="Read-only audit of durable JsonPit recovery events",
+	)
+	p_audit.add_argument("pit", nargs="?", default=None, help="Pit name or path (optional if --wwwa is used)")
+	p_audit.add_argument("--wwwa", action="store_true", default=False, help="Audit all four WWWA pits (Person, Object, Place, Activity)")
+	p_audit.add_argument("--machine", default="all", help="Filter by machine name ('all', 'local', or specific machine)")
+	p_audit.add_argument("--level", default="Trace", help="Minimum severity level (Trace, Debug, Information, Warning, Error, Critical)")
+	p_audit.add_argument("--json", action="store_true", default=False, help="Output audit events as JSON array")
+
 	return parser
 
 
@@ -1488,7 +1611,7 @@ def main(argv: list[str] | None = None) -> int:
 	known_subcommands = {
 		"grep", "get", "history", "list", "put", "seed", "set", "del",
 		"delete", "delete-item", "del-prop", "delete-property",
-		"rename", "export", "status", "pits", "maintain",
+		"rename", "export", "status", "pits", "maintain", "audit",
 	}
 
 	# Quick check for top-level help or no arguments
@@ -1535,6 +1658,7 @@ def main(argv: list[str] | None = None) -> int:
 		"export": cmd_export,
 		"status": cmd_status,
 		"maintain": cmd_maintain,
+		"audit": cmd_audit,
 	}
 
 	cmd_func = dispatch.get(args.command)
