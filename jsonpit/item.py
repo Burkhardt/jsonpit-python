@@ -54,8 +54,16 @@ class TimestampedValue:
 				else:
 					self.time = utcnow()
 			else:
-				self.value = raw
-				self.time = utcnow()
+				if raw.strip():
+					try:
+						self.time = parse_iso_timestamp(raw.strip())
+						self.value = ""
+					except Exception:
+						self.value = raw
+						self.time = utcnow()
+				else:
+					self.value = raw
+					self.time = utcnow()
 
 	def __str__(self) -> str:
 		return f"{self.value}|{format_iso_timestamp(self.time)}"

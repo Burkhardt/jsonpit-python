@@ -7,7 +7,9 @@ coordination, change-file streaming, receipt-based cleanup, and Mapping protocol
 from __future__ import annotations
 
 import copy
+from dataclasses import dataclass, field
 import datetime
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -48,7 +50,7 @@ from .fs import (
 	safe_write_in_place,
 )
 from .history import PitItems
-from .item import PitItem
+from .item import PitItem, TimestampedValue
 
 
 def has_non_empty_string_id(item: Any) -> bool:
@@ -251,6 +253,88 @@ class JsonPitBase:
 		return self._process_flag.try_release_current_process()
 
 
+@dataclass
+class PitMaintenanceOptions:
+	"""Configuration options for Pit maintenance (CR021/CR022)."""
+	apply: bool = False
+	prune_process_flags: bool = False
+	older_than: datetime.timedelta | None = None
+	repair_legacy_extensions: bool = False
+	archive_events: bool = False
+
+
+@dataclass
+class PitMaintenanceResult:
+	"""Results of an inspection or apply maintenance operation."""
+	pit_file: str
+	applied: bool
+	master_flags_observed: int = 0
+	conflict_flags_observed: int = 0
+	process_flags_active: int = 0
+	process_flags_expired: int = 0
+	process_flags_pruned: int = 0
+	process_flags_malformed: int = 0
+	change_files_observed: int = 0
+	change_files_invalid: int = 0
+	change_files_valid: int = 0
+	change_files_merged: int = 0
+	change_files_eligible: int = 0
+	change_files_removed: int = 0
+	receipts_observed: int = 0
+	receipts_created: int = 0
+	receipts_retained: int = 0
+	receipts_removed: int = 0
+	receipts_malformed: int = 0
+	legacy_artifacts_observed: int = 0
+	legacy_artifacts_repaired: int = 0
+	event_files_observed: int = 0
+	event_files_archived: int = 0
+	event_files_removed: int = 0
+	event_archive_name: str | None = None
+	canonical_persisted: bool = False
+	current_master: bool = False
+	deferred: list[str] = field(default_factory=list)
+	failures: list[str] = field(default_factory=list)
+
+	@property
+	def succeeded(self) -> bool:
+		return len(self.failures) == 0
+
+	def to_dict(self) -> dict[str, Any]:
+		return {
+			"PitFile": self.pit_file,
+			"Applied": self.applied,
+			"Succeeded": self.succeeded,
+			"MasterFlagsObserved": self.master_flags_observed,
+			"ConflictFlagsObserved": self.conflict_flags_observed,
+			"ProcessFlagsActive": self.process_flags_active,
+			"ProcessFlagsExpired": self.process_flags_expired,
+			"ProcessFlagsPruned": self.process_flags_pruned,
+			"ProcessFlagsMalformed": self.process_flags_malformed,
+			"ChangeFilesObserved": self.change_files_observed,
+			"ChangeFilesInvalid": self.change_files_invalid,
+			"ChangeFilesValid": self.change_files_valid,
+			"ChangeFilesMerged": self.change_files_merged,
+			"ChangeFilesEligible": self.change_files_eligible,
+			"ChangeFilesRemoved": self.change_files_removed,
+			"ReceiptsObserved": self.receipts_observed,
+			"ReceiptsCreated": self.receipts_created,
+			"ReceiptsRetained": self.receipts_retained,
+			"ReceiptsRemoved": self.receipts_removed,
+			"ReceiptsMalformed": self.receipts_malformed,
+			"LegacyArtifactsObserved": self.legacy_artifacts_observed,
+			"LegacyArtifactsRepaired": self.legacy_artifacts_repaired,
+			"EventFilesObserved": self.event_files_observed,
+			"EventFilesArchived": self.event_files_archived,
+			"EventFilesRemoved": self.event_files_removed,
+			"EventArchiveName": self.event_archive_name,
+			"CanonicalPersisted": self.canonical_persisted,
+			"CurrentMaster": self.current_master,
+			"Deferred": self.deferred,
+			"Failures": self.failures,
+		}
+
+
 class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 	"""
 	Domain Aggregate Root for a Pit directory ecosystem.
@@ -270,6 +354,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		unflagged: bool = False,
 		retain_window: bool = False,
 		default_max_count: int = 10,
+		autoload: bool = True,
 	) -> None:
 		super().__init__(
 			pit_dir=pit_dir,
@@ -281,6 +366,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			retain_window=retain_window,
 		)
 		self.default_max_count = default_max_count
+		self.autoload = autoload
 		self._historic_items: dict[str, PitItems] = {}
 		self._disposed = False
 		self._owned_canonical_path: str | None = None
@@ -318,8 +404,9 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 	def __enter__(self) -> Pit:
 		if not self.unflagged and not self.read_only:
 			self.process_flag.update()
-		self.load()
-		self.merge_changes()
+		if self.autoload:
+			self.load()
+			self.merge_changes()
 		return self
 
 	def __exit__(
@@ -360,6 +447,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		unflagged: bool = False,
 		retain_window: bool = False,
 		default_max_count: int = 10,
+		autoload: bool = True,
 	) -> Pit:
 		"""
 		Opens a Pit directory using the Cloud-First Triad or explicit local path.
@@ -380,6 +468,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			unflagged=unflagged,
 			retain_window=retain_window,
 			default_max_count=default_max_count,
+			autoload=autoload,
 		)
 
 	# --- State Loading & Ingestion ---
@@ -652,6 +741,203 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 						receipt.remove()
 
 		return merged_count
+
+	# --- Maintenance & Cleanup (CR021/CR022) ---
+
+	def maintain(
+		self,
+		options: PitMaintenanceOptions | None = None,
+		*,
+		apply: bool = False,
+	) -> PitMaintenanceResult:
+		"""
+		Inspects or reconciles changes, receipts, process flags, and event archives.
+		Report-only by default; apply=True performs authorized modifications.
+		"""
+		if options is None:
+			options = PitMaintenanceOptions(apply=apply)
+		elif apply:
+			options.apply = True
+
+		if options.prune_process_flags and not options.apply:
+			raise ValueError("Process-flag pruning requires apply=True.")
+		if options.prune_process_flags and options.older_than is None:
+			raise ValueError("Process-flag pruning requires older_than duration.")
+		if not options.prune_process_flags and options.older_than is not None:
+			raise ValueError("older_than applies only to process-flag pruning.")
+		if options.older_than is not None and options.older_than <= datetime.timedelta(0):
+			raise ValueError("older_than must be positive.")
+
+		result = PitMaintenanceResult(
+			pit_file=str(self.canonical_file),
+			applied=options.apply,
+		)
+
+		if not self.pit_dir.is_dir():
+			result.deferred.append(f"Pit directory does not exist: {self.pit_dir}")
+			return result
+
+		now = utcnow()
+
+		if not self._historic_items and self.canonical_file.is_file():
+			self.load(undercover=True)
+
+		with self._locker:
+			# 1. Enumerate and process change files
+			change_files = sorted(
+				[p for p in self.pit_dir.glob("*.json") if p.name != self.canonical_file.name],
+				key=lambda p: p.name,
+				reverse=True if options.apply else False,
+			)
+
+			merged_files: list[tuple[Path, list[Any]]] = []
+			for cf in change_files:
+				result.change_files_observed += 1
+				try:
+					payload = ChangeFile.read_validated(cf)
+					if payload is None:
+						result.change_files_invalid += 1
+						continue
+					result.change_files_valid += 1
+					for entry in payload:
+						if isinstance(entry, dict):
+							item = PitItem(entry, invalidate=False)
+							current = self._historic_items.get(item.id) or PitItems.create(
+								item.id, self.default_max_count
+							)
+							self._historic_items[item.id] = current.push(item)
+						elif isinstance(entry, list):
+							for raw_frag in entry:
+								if isinstance(raw_frag, dict):
+									item = PitItem(raw_frag, invalidate=False)
+									current = self._historic_items.get(item.id) or PitItems.create(
+										item.id, self.default_max_count
+									)
+									self._historic_items[item.id] = current.push(item)
+					result.change_files_merged += 1
+					merged_files.append((cf, payload))
+				except Exception as ex:
+					result.change_files_invalid += 1
+					result.deferred.append(f"Change file is not currently mergeable: {cf.name}: {ex}")
+
+			# 2. If apply: acquire master, store canonical, manage receipts & cleanup
+			if options.apply:
+				result.current_master = not self.read_only and self.try_acquire_master()
+				if result.current_master:
+					if merged_files:
+						self._store_canonical(force=True)
+						result.canonical_persisted = True
+
+					for cf, _ in merged_files:
+						receipt_path = cf.with_suffix(".receipt")
+						existed = receipt_path.is_file()
+						try:
+							receipt = ReceiptFile(cf)
+							result.receipts_observed += 1 if existed else 0
+							result.receipts_created += 0 if existed else 1
+							result.receipts_retained += 1
+							if receipt.is_eligible_for_cleanup:
+								result.change_files_eligible += 1
+								safe_delete_file(cf)
+								result.change_files_removed += 1
+								receipt.remove()
+								result.receipts_removed += 1
+						except Exception as ex:
+							result.receipts_malformed += 1
+							result.deferred.append(f"Receipt is not currently valid: {receipt_path.name}: {ex}")
+
+					# Inspect orphan receipts whose change file is missing
+					for rf_path in sorted(self.pit_dir.glob("*.receipt"), key=lambda p: p.name):
+						cf_path = rf_path.with_suffix(".json")
+						if not cf_path.is_file():
+							result.receipts_observed += 1
+							try:
+								orphan_receipt = ReceiptFile(cf_path)
+								if orphan_receipt.is_eligible_for_cleanup:
+									orphan_receipt.remove()
+									result.receipts_removed += 1
+								else:
+									result.receipts_retained += 1
+							except Exception:
+								pass
+				elif merged_files:
+					result.deferred.append("Cleanup evidence and deletion require current exact-master authority.")
+			else:
+				# Report-only inspection of receipts
+				for cf in change_files:
+					rf_path = cf.with_suffix(".receipt")
+					if rf_path.is_file():
+						result.receipts_observed += 1
+						try:
+							receipt = ReceiptFile(cf)
+							if receipt.is_eligible_for_cleanup:
+								result.change_files_eligible += 1
+							result.receipts_retained += 1
+						except Exception:
+							result.receipts_malformed += 1
+
+			# 3. Process Flags inspection and optional pruning
+			for pf in sorted(self.pit_dir.glob("*.flag"), key=lambda p: p.name):
+				if pf.name == "Master.flag" or pf.name == "Master":
+					result.master_flags_observed += 1
+					continue
+				if pf.name.startswith("Master"):
+					result.conflict_flags_observed += 1
+					continue
+
+				try:
+					content = safe_read_text(pf)
+					first_line = content.splitlines()[0] if content else ""
+					if not first_line:
+						result.process_flags_malformed += 1
+						result.deferred.append(f"Process flag is malformed: {pf.name}")
+						continue
+					tv = TimestampedValue(first_line)
+					is_expired = (now - tv.time) > MasterFlagFile.TICKET_DURATION
+					if not is_expired:
+						result.process_flags_active += 1
+						continue
+
+					result.process_flags_expired += 1
+					if options.prune_process_flags and options.older_than is not None:
+						age = now - tv.time
+						if age >= options.older_than:
+							reread_content = safe_read_text(pf)
+							reread_line = reread_content.splitlines()[0] if reread_content else ""
+							if reread_line and (now - TimestampedValue(reread_line).time) >= options.older_than:
+								safe_delete_file(pf)
+								if not pf.exists():
+									result.process_flags_pruned += 1
+								else:
+									result.failures.append(f"Expired process flag remained after removal: {pf}")
+				except Exception as ex:
+					result.process_flags_malformed += 1
+					result.deferred.append(f"Process flag is not currently verifiable: {pf.name}: {ex}")
+
+			# 4. Legacy EventFile migration
+			events_dir = self.pit_dir / "Events"
+			if events_dir.is_dir():
+				for ef in sorted(events_dir.glob("*.event"), key=lambda p: p.name):
+					result.event_files_observed += 1
+					stem = ef.stem
+					if "_" in stem:
+						prefix, possible_hash = stem.rsplit("_", 1)
+						if len(possible_hash) == 64 and all(c in "0123456789abcdefABCDEF" for c in possible_hash):
+							result.legacy_artifacts_observed += 1
+							if options.repair_legacy_extensions or options.apply:
+								content = safe_read_text(ef)
+								actual_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+								if actual_hash.lower() == possible_hash.lower():
+									clean_target = events_dir / f"{prefix}.event"
+									try:
+										ef.rename(clean_target)
+										result.legacy_artifacts_repaired += 1
+									except Exception as ex:
+										result.failures.append(f"Legacy event rename failed for {ef.name}: {ex}")
+								else:
+									result.deferred.append(f"Legacy event file hash mismatch for {ef.name}")
+
+		return result
 
 	# --- Query & Mapping Protocol ---
 

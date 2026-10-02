@@ -19,7 +19,24 @@ This document provides a foldable, searchable reference for the public `jsonpit`
   - `delete_item(item_id: str, by: str | None = None, backdate_100: bool = False) -> bool`: Tombstones an entity across the distributed cluster.
   - `rename_id(old_key: str, new_key: str, by: str | None = None) -> bool`: Atomically migrates an entity identity.
   - `seed_from_file(file_path: Path | str, require_existing: bool = False) -> int`: Ingests an external JSON/JSON5 file (single entity, keyed map, or array) with whole-batch ID preflight and optional CR047 strict patch enforcement.
+  - `maintain(options: PitMaintenanceOptions = None, apply: bool = False) -> PitMaintenanceResult`: Reconciles change files, manages 10-minute receipt grace periods, prunes expired process flags (`--older-than`), and repairs legacy event extensions.
   - `save(force: bool = False, pretty: bool = False) -> None`: Persists the unified canonical `.pit` file in-place using CR022 sibling writes (`.pit.tmp` followed by atomic rename).
+  </details>
+
+- <details>
+  <summary><code>Pit.maintain(...)</code>, <code>PitMaintenanceOptions</code>, and <code>PitMaintenanceResult</code></summary>
+
+  `maintain()` inventories pending change/receipt cleanup without mutation. It checks the canonical parent first, returning deferred status for missing targets without creating directories. `maintain(apply=True)` applies canonical reconciliation and eligible change-first/receipt-second retirement (10-minute grace period).
+  
+  **Maintenance Options:**
+  - `apply: bool`: Authorizes modifications to disk (default False: report-only preview).
+  - `prune_process_flags: bool`: Authorizes pruning of expired PID-window flag files. Requires `apply=True` and `older_than`.
+  - `older_than: timedelta`: Duration threshold for flag pruning (e.g. `01:00:00`, `7.00:00:00`).
+  - `repair_legacy_extensions: bool`: Migrates legacy `{stem}_{sha256}.event` files to clean `{stem}.event` in `Events/`.
+  - `archive_events: bool`: Compacts event logs into immutable archives.
+
+  **Maintenance Result (`to_dict()` for 100% C# parity):**
+  - Exposes `PitFile`, `Applied`, `Succeeded`, `ChangeFilesObserved/Merged/Removed`, `ReceiptsCreated/Removed`, `ProcessFlagsActive/Expired/Pruned`, `LegacyArtifactsObserved/Repaired`, `Deferred`, and `Failures`.
   </details>
 
 - <details>

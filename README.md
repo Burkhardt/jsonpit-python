@@ -175,6 +175,11 @@ echo '{id: "AlanKay", dynabook: true}' | jpit put Person
 # Set individual properties or tombstone an entity:
 jpit set Person AlanKay Status "Visionary"
 jpit del Person ObsoleteEntity
+
+# Automated maintenance and dead flag pruning (100% C# pits maintain parity):
+jpit maintain Activity -c OneDrive -r AIA
+jpit maintain Activity -c OneDrive -r AIA --apply --prune-process-flags --older-than 01:00:00 --json
+jpit maintain --wwwa -c OneDrive -r AIA --apply --prune-process-flags --older-than 7.00:00:00
 ```
 
 ---

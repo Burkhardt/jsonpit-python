@@ -27,9 +27,14 @@ from .exceptions import (
 	StrictPatchValidationError,
 )
 from .fs import resolve_pit_target
-from .item import PitItem
 from .icons import Icons
-from .store import Pit, parse_and_validate_seed_payload
+from .store import (
+	Pit,
+	PitItem,
+	PitMaintenanceOptions,
+	PitMaintenanceResult,
+	parse_and_validate_seed_payload,
+)
 from . import __version__
 
 
@@ -695,6 +700,225 @@ def color(text: str, code: str, use_color: bool = True) -> str:
 	return f"{code}{text}{C_RESET}"
 
 
+WWWA_PITS: tuple[str, ...] = ("Person", "Object", "Place", "Activity")
+
+
+def parse_duration(text: str) -> datetime.timedelta:
+	"""
+	Parses a duration string into a datetime.timedelta.
+	Supports .NET TimeSpan formats ('7.00:00:00', '01:00:00', '00:10:00')
+	as well as friendly unit suffixes ('7d', '1h', '10m', '30s') and seconds.
+	"""
+	s = str(text).strip()
+	if not s:
+		raise ValueError("--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00.")
+
+	# 1. d.hh:mm:ss or d.hh:mm:ss.ffffff
+	m = re.match(r"^(\d+)\.(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?$", s)
+	if m:
+		days = int(m.group(1))
+		hours = int(m.group(2))
+		minutes = int(m.group(3))
+		seconds = int(m.group(4))
+		micros = int(m.group(5)[:6].ljust(6, "0")) if m.group(5) else 0
+		td = datetime.timedelta(days=days, hours=hours, minutes=minutes, seconds=seconds, microseconds=micros)
+		if td <= datetime.timedelta(0):
+			raise ValueError("--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00.")
+		return td
+
+	# 2. hh:mm:ss or hh:mm:ss.ffffff
+	m = re.match(r"^(\d{1,2}):(\d{2}):(\d{2})(?:\.(\d+))?$", s)
+	if m:
+		hours = int(m.group(1))
+		minutes = int(m.group(2))
+		seconds = int(m.group(3))
+		micros = int(m.group(4)[:6].ljust(6, "0")) if m.group(4) else 0
+		td = datetime.timedelta(hours=hours, minutes=minutes, seconds=seconds, microseconds=micros)
+		if td <= datetime.timedelta(0):
+			raise ValueError("--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00.")
+		return td
+
+	# 3. mm:ss
+	m = re.match(r"^(\d{1,2}):(\d{2})$", s)
+	if m:
+		minutes = int(m.group(1))
+		seconds = int(m.group(2))
+		td = datetime.timedelta(minutes=minutes, seconds=seconds)
+		if td <= datetime.timedelta(0):
+			raise ValueError("--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00.")
+		return td
+
+	# 4. Units with suffix: 7d, 24h, 10m, 30s
+	m = re.match(r"^(\d+(?:\.\d+)?)\s*([dhms])$", s.lower())
+	if m:
+		val = float(m.group(1))
+		unit = m.group(2)
+		if unit == "d":
+			td = datetime.timedelta(days=val)
+		elif unit == "h":
+			td = datetime.timedelta(hours=val)
+		elif unit == "m":
+			td = datetime.timedelta(minutes=val)
+		elif unit == "s":
+			td = datetime.timedelta(seconds=val)
+		else:
+			raise ValueError(f"Unknown duration unit: {unit}")
+		if td <= datetime.timedelta(0):
+			raise ValueError("--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00.")
+		return td
+
+	# 5. Raw numeric integer seconds
+	if s.isdigit():
+		sec = int(s)
+		td = datetime.timedelta(seconds=sec)
+		if td <= datetime.timedelta(0):
+			raise ValueError("--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00.")
+		return td
+
+	raise ValueError(f"--older-than requires a positive TimeSpan, for example 01:00:00 or 7.00:00:00 (got '{s}').")
+
+
+def cmd_maintain(args: argparse.Namespace) -> int:
+	"""
+	Reconciles changes, purges expired process flags, and maintains Pit health.
+	Provides 100% parity with C# pits maintain.
+	"""
+	wwwa = getattr(args, "wwwa", False)
+	pit_param = getattr(args, "pit", None)
+
+	if wwwa and pit_param:
+		sys.stderr.write("[jpit] Error: maintain accepts either <PitName> or --wwwa, not both.\n")
+		return 1
+	if not wwwa and not pit_param:
+		sys.stderr.write("[jpit] Error: maintain requires exactly one <PitName>, or --wwwa.\n")
+		return 1
+
+	apply = getattr(args, "apply", False)
+	prune = getattr(args, "prune_process_flags", False)
+	older_than_raw = getattr(args, "older_than", None)
+	repair = getattr(args, "repair_legacy_extensions", False)
+	archive_events = getattr(args, "archive_events", False)
+	json_output = getattr(args, "json", False)
+
+	if prune and not apply:
+		sys.stderr.write("[jpit] Error: --prune-process-flags requires --apply.\n")
+		return 1
+	if prune and not older_than_raw:
+		sys.stderr.write("[jpit] Error: --prune-process-flags requires --older-than <duration>.\n")
+		return 1
+	if not prune and older_than_raw is not None:
+		sys.stderr.write("[jpit] Error: --older-than applies only with --prune-process-flags.\n")
+		return 1
+	if repair and not apply:
+		sys.stderr.write("[jpit] Error: --repair-legacy-extensions requires --apply.\n")
+		return 1
+
+	older_than: datetime.timedelta | None = None
+	if older_than_raw is not None:
+		try:
+			older_than = parse_duration(older_than_raw)
+		except ValueError as ex:
+			sys.stderr.write(f"[jpit] Error: {ex}\n")
+			return 1
+
+	options = PitMaintenanceOptions(
+		apply=apply,
+		prune_process_flags=prune,
+		older_than=older_than,
+		repair_legacy_extensions=repair,
+		archive_events=archive_events,
+	)
+
+	cloud = getattr(args, "cloud", "OneDrive")
+	root = getattr(args, "root", None)
+
+	targets: list[tuple[Path, Path, str]] = []
+
+	if wwwa:
+		base_dir: Path | None = None
+		if root:
+			r_path = Path(os.path.expanduser(root))
+			if r_path.is_dir():
+				base_dir = r_path
+		if base_dir is None:
+			cfg = OsConfig.load()
+			if not cfg.is_config_loaded:
+				sys.stderr.write(f"[jpit] Error: {missing_configuration_diagnostic()}\n")
+				return 1
+			cloud_root = cfg.get_cloud_root(cloud)
+			if not cloud_root or not cloud_root.is_dir():
+				sys.stderr.write(f"[jpit] Error: Cloud provider '{cloud}' root directory not found.\n")
+				return 1
+			base_dir = cloud_root / root.strip("/\\") if root else cloud_root
+
+		if not base_dir.is_dir():
+			sys.stderr.write(f"[jpit] Error: The maintenance root does not exist: {base_dir}\n")
+			return 1
+
+		for name in WWWA_PITS:
+			p_dir = base_dir / name
+			c_file = p_dir / f"{name}.pit"
+			targets.append((p_dir, c_file, name))
+
+		if all(not c_file.is_file() for _, c_file, _ in targets):
+			sys.stderr.write(f"[jpit] Error: The maintenance root contains none of the WWWA pits: {base_dir}\n")
+			return 1
+	else:
+		try:
+			p_dir, p_name = resolve_pit_target(pit_param, cloud=cloud, root=root)
+		except Exception as ex:
+			sys.stderr.write(f"[jpit] Error: {ex}\n")
+			return 1
+		c_file = p_dir / f"{p_name}.pit"
+		if not c_file.is_file() and not p_dir.is_dir():
+			sys.stderr.write(f"[jpit] Error: The requested pit does not exist: {c_file}\n")
+			return 1
+		targets.append((p_dir, c_file, p_name))
+
+	results: list[PitMaintenanceResult] = []
+	for p_dir, c_file, p_name in targets:
+		if not c_file.is_file():
+			missing = PitMaintenanceResult(pit_file=str(c_file), applied=apply)
+			missing.deferred.append(f"Pit does not exist and was not created: {c_file}")
+			results.append(missing)
+			continue
+
+		with Pit.open(
+			p_dir,
+			cloud=cloud,
+			root=root,
+			read_only=(not apply),
+			unflagged=True,
+			autoload=False,
+		) as pit:
+			res = pit.maintain(options)
+			pit.read_only = True
+			results.append(res)
+
+	if json_output:
+		doc = [r.to_dict() for r in results] if wwwa else results[0].to_dict()
+		sys.stdout.write(json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
+	else:
+		use_color = should_color()
+		for res in results:
+			summary = (
+				f"{res.pit_file}: changes {res.change_files_observed} observed/{res.change_files_merged} merged/{res.change_files_removed} removed; "
+				f"receipts {res.receipts_created} created/{res.receipts_removed} removed; "
+				f"flags {res.process_flags_active} active/{res.process_flags_expired} expired/{res.process_flags_pruned} pruned; "
+				f"legacy {res.legacy_artifacts_observed} observed/{res.legacy_artifacts_repaired} repaired; "
+				f"events {res.event_files_observed} observed/{res.event_files_archived} archived/{res.event_files_removed} removed"
+				+ (f" as {res.event_archive_name}." if res.event_archive_name else ".")
+			)
+			sys.stdout.write(color(summary, C_CYAN, use_color) + "\n")
+			for d in res.deferred:
+				sys.stdout.write(f"Deferred: {d}\n")
+			for f in res.failures:
+				err_msg = color(f"Failed: {f}", C_BOLD + C_RED, use_color)
+				sys.stderr.write(f"{err_msg}\n")
+
+	return 0 if all(r.succeeded for r in results) else 1
+
+
 def get_cloud_options_description(use_color: bool = True) -> str:
 	"""Builds the cloud provider options line with brand-specific badge glyphs."""
 	try:
@@ -746,7 +970,7 @@ def print_top_help(
 	i_folder = color(Icons.FOLDER, C_YELLOW, use_color)
 	i_banner = color(Icons.BANNER, C_CYAN, use_color)
 
-	cmd_list = "grep, get, history, list, put, set, del, del-prop, rename, export, status, pits"
+	cmd_list = "grep, get, history, list, put, set, del, del-prop, rename, export, status, pits, maintain"
 	sys.stdout.write(f"{c_cmd}\t{i_info}\t{cmd_list}\n")
 
 	commands_spec = [
@@ -762,6 +986,7 @@ def print_top_help(
 		("export", "<PitName> [--out <file>] [--at <ts>] [--jq <expr>]"),
 		("status", "<PitName>"),
 		("pits", "[-r <root>] [-c <cloud>] [--json] (discover available pits)"),
+		("maintain", "(<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--json]"),
 	]
 	for cmd, spec in commands_spec:
 		cmd_str = color(f"  jpit {cmd}", C_GREEN, use_color)
@@ -962,6 +1187,22 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 				("PitName", "Pit name or file path"),
 			],
 			"opts": [],
+		},
+		"maintain": {
+			"usage": "jpit maintain (<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--repair-legacy-extensions] [--archive-events] [--json] [options]",
+			"desc": "Inspect or reconcile changes, receipts, expired process flags, and event archives.",
+			"args": [
+				("PitName", "Pit name or file path (optional if --wwwa is used)"),
+			],
+			"opts": [
+				("--wwwa", "Maintain all four WWWA pits (Person, Object, Place, Activity)"),
+				("--apply", "Apply mutations (default is report-only preview)"),
+				("--prune-process-flags", "Prune expired process activity flags (requires --apply and --older-than)"),
+				("--older-than <dur>", "Duration threshold for flag pruning (e.g. 01:00:00, 7.00:00:00, 1h)"),
+				("--repair-legacy-extensions", "Repair legacy event extensions (requires --apply)"),
+				("--archive-events", "Archive loose event files into immutable archives"),
+				("--json", "Output maintenance report as JSON"),
+			],
 		},
 	}
 
@@ -1218,6 +1459,21 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 	p_status = subparsers.add_parser("status", parents=[common_parser], help="Inspect Pit directory lease and flags")
 	p_status.add_argument("pit", help="Pit name")
 
+	# maintain
+	p_maintain = subparsers.add_parser(
+		"maintain",
+		parents=[common_parser],
+		help="Reconcile changes, prune expired flags, and maintain pit health",
+	)
+	p_maintain.add_argument("pit", nargs="?", default=None, help="Pit name or path (optional if --wwwa is used)")
+	p_maintain.add_argument("--wwwa", action="store_true", default=False, help="Maintain all four WWWA pits (Person, Object, Place, Activity)")
+	p_maintain.add_argument("--apply", action="store_true", default=False, help="Apply maintenance modifications (default is report-only)")
+	p_maintain.add_argument("--prune-process-flags", action="store_true", default=False, help="Prune dead process flags older than duration (requires --apply and --older-than)")
+	p_maintain.add_argument("--older-than", help="Age threshold for flag pruning (e.g. 01:00:00, 7.00:00:00, 1h)")
+	p_maintain.add_argument("--repair-legacy-extensions", action="store_true", default=False, help="Repair legacy event extensions in Events/ (requires --apply)")
+	p_maintain.add_argument("--archive-events", action="store_true", default=False, help="Archive loose event files into immutable archives")
+	p_maintain.add_argument("--json", action="store_true", default=False, help="Output maintenance report as JSON")
+
 	return parser
 
 
@@ -1232,7 +1488,7 @@ def main(argv: list[str] | None = None) -> int:
 	known_subcommands = {
 		"grep", "get", "history", "list", "put", "seed", "set", "del",
 		"delete", "delete-item", "del-prop", "delete-property",
-		"rename", "export", "status", "pits",
+		"rename", "export", "status", "pits", "maintain",
 	}
 
 	# Quick check for top-level help or no arguments
@@ -1278,6 +1534,7 @@ def main(argv: list[str] | None = None) -> int:
 		"rename": cmd_rename,
 		"export": cmd_export,
 		"status": cmd_status,
+		"maintain": cmd_maintain,
 	}
 
 	cmd_func = dispatch.get(args.command)

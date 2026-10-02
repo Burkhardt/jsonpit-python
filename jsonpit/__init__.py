@@ -17,13 +17,21 @@ from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuratio
 from .history import PitItems
 from .icons import Icons
 from .item import PitItem
-from .store import Pit, PitStore, parse_and_validate_seed_payload
+from .store import (
+	Pit,
+	PitMaintenanceOptions,
+	PitMaintenanceResult,
+	PitStore,
+	parse_and_validate_seed_payload,
+)
 
 __version__ = "4.4.6"
 
 __all__ = [
 	"Pit",
 	"PitStore",
+	"PitMaintenanceOptions",
+	"PitMaintenanceResult",
 	"parse_and_validate_seed_payload",
 	"PitItem",
 	"PitItems",
