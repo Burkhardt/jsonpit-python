@@ -4,6 +4,20 @@ This document provides a foldable, searchable reference for the public `jsonpit`
 
 ---
 
+## Architectural Diagrams
+
+### Core Replicated Storage Architecture
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpitCD.png" alt="Core Replicated Storage Architecture" width="700"/>
+</p>
+
+### Storage Maintenance & Recovery Audit Architecture
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpit_opsCD.png" alt="Operations & Recovery Audit Architecture" width="700"/>
+</p>
+
+---
+
 ## Pit Lifecycle & Storage
 
 - <details>

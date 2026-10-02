@@ -31,7 +31,6 @@ class Pit {
   + delete_item(item_id: str, by: str | None = None, backdate_100: bool = False) : bool
   + rename_id(old_key: str, new_key: str, by: str | None = None) : bool
   + save(force: bool = False, pretty: bool = False) : void
-  .. Maintenance ..
   + maintain(options: PitMaintenanceOptions = None) : PitMaintenanceResult
 }
 
@@ -71,75 +70,9 @@ class PitItem {
   + to_json(indent: int | None = None) : str
 }
 
-class PitMaintenanceOptions {
-  + apply : bool
-  + prune_process_flags : bool
-  + older_than : timedelta | None
-  + repair_legacy_extensions : bool
-  + archive_events : bool
-}
-
-class PitMaintenanceResult {
-  + pit_file : str
-  + applied : bool
-  + observed_changes : int
-  + merged_changes : int
-  + retired_changes : int
-  + retired_receipts : int
-  + observed_flags : int
-  + expired_flags : int
-  + pruned_flags : int
-  + repaired_events : int
-  + archived_events : int
-  + event_archive_name : str | None
-  + deferred : list<str>
-  + failures : list<str>
-  + succeeded : bool
-}
-
-class PitAudit {
-  + {static} inspect(pit_directory: Path | str, machine_filter: str = "all", min_level: LogLevel = LogLevel.TRACE) : PitAuditReadResult
-}
-
-class PitAuditReadResult {
-  + events : list<PitAuditEvent>
-  + issues : list<str>
-  + succeeded : bool
-}
-
-class PitAuditEvent {
-  + file_name : str
-  + content : dict<str, Any>
-  + machine : str
-  + utc_time : datetime
-  + level : LogLevel
-  + stage : str
-  + event_id : str
-  + message : str
-  + {static} from_dict(file_name: str, content: dict) : PitAuditEvent
-}
-
-enum LogLevel {
-  TRACE
-  DEBUG
-  INFORMATION
-  WARNING
-  ERROR
-  CRITICAL
-  + {static} from_string(name: str) : LogLevel
-  + display_name : str
-}
-
 JsonPitBase <|-- Pit
 Pit "1" *-- "0..*" PitItems : internal history map
 PitItems "1" o-- "0..*" PitItem : immutable fragment stack
 Pit ..> PitItem : produces bound living entity
 PitItem o--> "0..1" Pit : _pit_ref (dispatches sparse deltas)
-
-Pit ..> PitMaintenanceOptions : configured by
-Pit ..> PitMaintenanceResult : generates
-
-PitAudit ..> PitAuditReadResult : inspects
-PitAuditReadResult "1" *-- "0..*" PitAuditEvent : collected events
-PitAuditEvent --> "1" LogLevel : severity
 @enduml

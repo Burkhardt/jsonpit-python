@@ -1,0 +1,75 @@
+@startuml jsonpit_opsCD
+skinparam classAttributeIconSize 0
+skinparam monochrome true
+skinparam shadowing false
+
+package "Storage Maintenance (CR021 / CR022)" {
+  class PitMaintenanceOptions {
+    + apply : bool
+    + prune_process_flags : bool
+    + older_than : timedelta | None
+    + repair_legacy_extensions : bool
+    + archive_events : bool
+  }
+
+  class PitMaintenanceResult {
+    + pit_file : str
+    + applied : bool
+    + observed_changes : int
+    + merged_changes : int
+    + retired_changes : int
+    + retired_receipts : int
+    + observed_flags : int
+    + expired_flags : int
+    + pruned_flags : int
+    + repaired_events : int
+    + archived_events : int
+    + event_archive_name : str | None
+    + deferred : list<str>
+    + failures : list<str>
+    + succeeded : bool
+    + to_dict() : dict<str, Any>
+  }
+
+  PitMaintenanceOptions .right.> PitMaintenanceResult : drives
+}
+
+package "Event Recovery Audit (CR003)" {
+  class PitAudit {
+    + {static} inspect(pit_dir: Path | str, machine: str = "all", min_level: LogLevel = LogLevel.TRACE) : PitAuditReadResult
+  }
+
+  class PitAuditReadResult {
+    + events : list<PitAuditEvent>
+    + issues : list<str>
+    + succeeded : bool
+  }
+
+  class PitAuditEvent {
+    + file_name : str
+    + content : dict<str, Any>
+    + machine : str
+    + utc_time : datetime
+    + level : LogLevel
+    + stage : str
+    + event_id : str
+    + message : str
+    + {static} from_dict(file_name: str, content: dict) : PitAuditEvent
+  }
+
+  enum LogLevel {
+    TRACE
+    DEBUG
+    INFORMATION
+    WARNING
+    ERROR
+    CRITICAL
+    + {static} from_string(name: str) : LogLevel
+    + display_name : str
+  }
+
+  PitAudit ..> PitAuditReadResult : inspects
+  PitAuditReadResult "1" *-- "0..*" PitAuditEvent : collected events
+  PitAuditEvent --> "1" LogLevel : severity
+}
+@enduml
