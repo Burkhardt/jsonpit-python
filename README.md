@@ -3,7 +3,11 @@
 > **Daemon-free distributed storage over Cloud Drives for developers and AI agents — multi-process, immutable history, zero dependencies.**  
 > *100% C# JsonPit Parity · Zero Third-Party Runtime Dependencies · Smalltalk-Grade Object-Oriented Architecture*
 
-`jsonpit` stores JsonPits—JSON files with an append-only value history—across machines and servers coordinated over synchronized Cloud Drives (`OneDrive`, `Dropbox`, `GoogleDrive`, `ICloudDrive`) without requiring a centralized database daemon.
+JsonPit change requests and release notes are centralized in the RAIkeep [`doc/`](https://github.com/Burkhardt/RAIkeep/tree/main/doc) directory under `JsonPit_...` filenames; they are not stored separately in this child repository.
+
+JsonPit stores JSON documents with value history across processes, machines, and servers using [asynchronous persistence with eventual durability](https://github.com/Burkhardt/RAIkeep/blob/main/MANIFESTO.md#asynchronous-persistence-with-eventual-durability).
+
+**CLI tools:** use `pits` (see [PitSeeder](https://github.com/Burkhardt/PitSeeder)) or [`jpit`](https://pypi.org/project/jsonpit/) to seed, export, inspect, and maintain JsonPits. Use [`amafu init`](https://github.com/Burkhardt/Amafu) to detect cloud drives and create the shared RAIkeep configuration.
 
 The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits` CLI in [RAIkeep](https://github.com/Burkhardt/RAIkeep). `jsonpit` is the pure-Python implementation engineered for 100% behavioral and physical storage parity with zero deviation.
 
