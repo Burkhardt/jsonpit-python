@@ -19,7 +19,7 @@ from .icons import Icons
 from .item import PitItem
 from .store import Pit, PitStore, parse_and_validate_seed_payload
 
-__version__ = "4.4.5"
+__version__ = "4.4.6"
 
 __all__ = [
 	"Pit",
