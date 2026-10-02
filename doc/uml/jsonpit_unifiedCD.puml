@@ -1,0 +1,141 @@
+@startuml jsonpit_unifiedCD
+skinparam classAttributeIconSize 0
+skinparam monochrome true
+skinparam shadowing false
+skinparam packageStyle rectangle
+
+package "Core Replicated Storage (jsonpit.store)" {
+  abstract class JsonPitBase {
+    + pit_name : str
+    + pit_dir : Path
+    + canonical_file : Path
+    + subscriber : str | None
+    + read_only : bool
+    + backup : bool
+    + unflagged : bool
+    + retain_window : bool
+  }
+
+  class Pit {
+    - _historic_items : dict<str, PitItems>
+    + default_max_count : int
+    + add(item: PitItem, refresh_modified: bool = True) : bool
+    + add_historical(item: PitItem) : bool
+    + __setitem__(item_id: str, item: PitItem) : void
+    + __setitem__(item_id: str, json_obj: dict) : void
+    + seed_from_file(file_path: Path | str) : int
+    + get(item_id: str, default: Any = None, at: datetime = None) : PitItem | None
+    + __getitem__(item_id: str) : PitItem
+    + delete_item(item_id: str, by: str = None) : bool
+    + rename_id(old_key: str, new_key: str, by: str = None) : bool
+    + save(force: bool = False, pretty: bool = False) : void
+    + maintain(options: PitMaintenanceOptions = None) : PitMaintenanceResult
+  }
+
+  class PitItems {
+    - _key : str
+    - _history : tuple<PitItem, ...>
+    - _max_count : int
+    + create(key: str, max_count: int = 10) : PitItems
+    + push(item: PitItem) : PitItems
+    + latest_fragment() : PitItem | None
+    + project_state(at: datetime = None) : PitItem | None
+  }
+
+  class PitItem {
+    - _data : dict<str, Any>
+    - _pit_ref : weakref<Pit> | None
+    + id : str
+    + modified : datetime
+    + deleted : bool
+    + note : str
+    + pit : Pit | None
+    + bind(pit: Pit) : PitItem
+    + __setitem__(key: str, value: Any) : void
+    + delete_property(property_name: str) : void
+    + delete_property_path(property_path: str) : void
+    + delete(by: str = None) : bool
+    + set_property(patch: dict | str) : bool
+    + extend_with(obj: dict) : bool
+    + to_dict() : dict
+    + to_json(indent: int = None) : str
+  }
+
+  JsonPitBase <|-- Pit
+  Pit "1" *-- "0..*" PitItems : history map
+  PitItems "1" o-- "0..*" PitItem : fragment stack
+  Pit ..> PitItem : produces
+  PitItem o--> "0..1" Pit : _pit_ref
+}
+
+package "Storage Maintenance (CR021 / CR022)" {
+  class PitMaintenanceOptions {
+    + apply : bool
+    + prune_process_flags : bool
+    + older_than : timedelta | None
+    + repair_legacy_extensions : bool
+    + archive_events : bool
+  }
+
+  class PitMaintenanceResult {
+    + pit_file : str
+    + applied : bool
+    + observed_changes : int
+    + merged_changes : int
+    + retired_changes : int
+    + retired_receipts : int
+    + observed_flags : int
+    + expired_flags : int
+    + pruned_flags : int
+    + repaired_events : int
+    + archived_events : int
+    + deferred : list<str>
+    + failures : list<str>
+    + succeeded : bool
+    + to_dict() : dict<str, Any>
+  }
+
+  PitMaintenanceOptions .right.> PitMaintenanceResult : drives
+}
+
+package "Recovery Event Audit (CR003)" {
+  class PitAudit {
+    + {static} inspect(pit_dir: Path | str, machine: str = "all", min_level: LogLevel = LogLevel.TRACE) : PitAuditReadResult
+  }
+
+  class PitAuditReadResult {
+    + events : list<PitAuditEvent>
+    + issues : list<str>
+    + succeeded : bool
+  }
+
+  class PitAuditEvent {
+    + file_name : str
+    + content : dict<str, Any>
+    + machine : str
+    + utc_time : datetime
+    + level : LogLevel
+    + stage : str
+    + event_id : str
+    + message : str
+  }
+
+  enum LogLevel {
+    TRACE
+    DEBUG
+    INFORMATION
+    WARNING
+    ERROR
+    CRITICAL
+    + {static} from_string(name: str) : LogLevel
+    + display_name : str
+  }
+
+  PitAudit ..> PitAuditReadResult : inspects
+  PitAuditReadResult "1" *-- "0..*" PitAuditEvent : collected events
+  PitAuditEvent --> "1" LogLevel : severity
+}
+
+Pit ..> PitMaintenanceOptions : configures
+Pit ..> PitMaintenanceResult : returns
+@enduml

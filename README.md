@@ -16,7 +16,7 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 ### Why Harmonized Versioning is Essential:
 - **Instant Compatibility Clarity:** Operators, DevOps pipelines, and autonomous AI agents immediately know whether `jpit` and `pits` share the exact same distributed protocol revision. If both tools report `4.4.x`, they guarantee identical master leasing rules, receipt mechanisms, 7-digit UTC timestamp parsing, and CR041 clean change file conventions.
 - **Elimination of Multi-Language Matrix Confusion:** In heterogeneous environments (e.g. C# backend daemons paired with Python agent orchestrators and data science tooling), unified SemVer tags eliminate complex cross-compatibility lookup tables.
-- **Joint Protocol Governance:** Architectural changes—such as CR040 anti-Read-Modify-Write rules, CR041 clean change file formatting, CR044 missing configuration diagnostics, CR047 strict patch validation, and [CR049](doc/CR/CR049_AIA_and_jsonpit_to_RAIkeep_Live-ID-Validation_and_Zip-Image-Import.md) live ID validation with 4-character change checksums—are certified across both languages under the exact same version milestone before release.
+- **Joint Protocol Governance:** Architectural changes—such as CR040 anti-Read-Modify-Write rules, CR041 clean change file formatting, CR044 missing configuration diagnostics, CR047 strict patch validation, and [CR049](https://github.com/Burkhardt/jsonpit-python/blob/main/doc/CR/CR049_AIA_and_jsonpit_to_RAIkeep_Live-ID-Validation_and_Zip-Image-Import.md) live ID validation with 4-character change checksums—are certified across both languages under the exact same version milestone before release.
 
 ---
 
@@ -40,12 +40,32 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 - **`PitItem`**: Polymorphic living entity. Emits pure sparse deltas without read-modify-write cycles (CR040).
 - **`PitItems`**: Immutable fragment stack managing value history and accurate point-in-time state projection.
 - **`JsonPitBase`**: Shared foundation for storage resolution, subscriber roles, and cloud synchronization.
+- **`PitMaintenanceOptions` / `PitMaintenanceResult`**: Automated reconciliation, 10-minute receipt grace periods, and flag pruning (CR021/CR022).
+- **`PitAudit` / `PitAuditEvent`**: Read-only durable recovery event inspection without acquiring leases or flags (CR003).
+
+### 1. Core Replicated Storage Architecture
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpitCD.png" alt="jsonpit Class Diagram" width="720"/>
+  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpitCD.png" alt="jsonpit Core Class Diagram" width="700"/>
 </p>
 
-> 📖 **Full API Reference:** For comprehensive method signatures, exception contracts, and protocol details, see **[API.md](API.md)**.
+<p align="center">
+  <em>Core Living Entity Model · Vector SVG: <a href="https://github.com/Burkhardt/jsonpit-python/blob/main/doc/uml/jsonpitCD.svg">jsonpitCD.svg</a></em>
+</p>
+
+### 2. Storage Maintenance & Event Recovery Audit Architecture
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/doc/uml/jsonpit_opsCD.png" alt="jsonpit Operations Class Diagram" width="700"/>
+</p>
+
+<p align="center">
+  <em>Maintenance &amp; Recovery Audit · Vector SVG: <a href="https://github.com/Burkhardt/jsonpit-python/blob/main/doc/uml/jsonpit_opsCD.svg">jsonpit_opsCD.svg</a></em>
+</p>
+
+> 📖 **Architecture & Full API:**  
+> • For the complete unified architecture across all subsystems, see **[jsonpit_unifiedCD.svg](https://github.com/Burkhardt/jsonpit-python/blob/main/doc/uml/jsonpit_unifiedCD.svg)**.  
+> • For comprehensive method signatures, exception contracts, and protocol details, see **[API.md](https://github.com/Burkhardt/jsonpit-python/blob/main/API.md)**.
 
 ---
 
@@ -225,7 +245,7 @@ To ensure 100% interoperability with C# `JsonPit`, this repository includes a de
 - **7 Parity Suites (41 Cross-Engine Steps):** Covers persistence CRUD, CR041 clean change files, receipt grace periods, nested property tombstones, compaction/events archiving, process flag lifecycles, and split-master partition recovery.
 
 For full suite descriptions, architecture diagrams, and certification tables, see:  
-👉 **[`doc/CROSS_ENGINE_PARITY_SPECIFICATION.md`](doc/CROSS_ENGINE_PARITY_SPECIFICATION.md)**
+👉 **[`doc/CROSS_ENGINE_PARITY_SPECIFICATION.md`](https://github.com/Burkhardt/jsonpit-python/blob/main/doc/CROSS_ENGINE_PARITY_SPECIFICATION.md)**
 
 ```bash
 # Run the full test battery (Unit Tests + 7 Cross-Engine Parity Suites):
@@ -234,10 +254,3 @@ python3 tests/run_all.py
 # Run a specific declarative parity suite directly:
 python3 -m tests.sequence_runner tests/suites/01_persistence_and_crud.json5
 ```
-
----
-
-## Heritage & Governance
-
-Architected by **Rainer Burkhardt (`RAI`)** + **Adele (`7010`)**.  
-Governed by [`ADELE_SPIRIT.md`](ADELE_SPIRIT.md) and [`GEMINI.md`](GEMINI.md) and assisted by an LLM named Adele as an homage to the great Adele Goldberg.
