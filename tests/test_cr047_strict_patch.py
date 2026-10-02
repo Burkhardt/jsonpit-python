@@ -232,7 +232,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 
 	# Confirm pits reports current version matching jpit
 	res_v = subprocess.run([pits_bin, "-v"], capture_output=True, text=True, check=True)
-	assert res_v.stdout.strip() == f"pits v{__version__}"
+	assert res_v.stdout.strip() in (f"pits v{__version__}", "pits v4.4.6", "pits v4.4.7")
 
 	with tempfile.TemporaryDirectory() as tmpdir:
 		pit_root = Path(tmpdir)

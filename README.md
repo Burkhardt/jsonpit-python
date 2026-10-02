@@ -9,9 +9,9 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
-## Cross-Tool & Cross-Language Version Alignment (`v4.4.6`)
+## Cross-Tool & Cross-Language Version Alignment (`v4.4.7`)
 
-`jsonpit` and the `jpit` CLI are version-synchronized to **`v4.4.6`** in direct lockstep with C# `JsonPit` and `pits 4.4.6` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+`jsonpit` and the `jpit` CLI are version-synchronized to **`v4.4.7`** in direct lockstep with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ### Why Harmonized Versioning is Essential:
 - **Instant Compatibility Clarity:** Operators, DevOps pipelines, and autonomous AI agents immediately know whether `jpit` and `pits` share the exact same distributed protocol revision. If both tools report `4.4.x`, they guarantee identical master leasing rules, receipt mechanisms, 7-digit UTC timestamp parsing, and CR041 clean change file conventions.
@@ -60,7 +60,7 @@ pipx install jsonpit
 # (or via companion alias)
 pipx install jpit
 
-# Upgrade to the latest lockstep release (v4.4.6)
+# Upgrade to the latest lockstep release (v4.4.7)
 pipx upgrade jsonpit
 # (or)
 pipx upgrade jpit

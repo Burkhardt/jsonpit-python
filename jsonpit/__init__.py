@@ -31,7 +31,7 @@ from .store import (
 	parse_and_validate_seed_payload,
 )
 
-__version__ = "4.4.6"
+__version__ = "4.4.7"
 
 __all__ = [
 	"Pit",
