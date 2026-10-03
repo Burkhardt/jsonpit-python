@@ -1,4 +1,4 @@
-# jpit (v4.5.2)
+# jpit (v4.5.3)
 
 > **The developer and AI agent companion CLI for [jsonpit](https://pypi.org/project/jsonpit/) — daemon-free distributed storage over Cloud Drives.**  
 > *100% lockstep parity with C# JsonPit in [RAIkeep](https://github.com/Burkhardt/RAIkeep).*
@@ -16,7 +16,7 @@ Install `jpit` in an isolated environment without dependency conflicts across yo
 # Install jpit globally
 pipx install jpit
 
-# Upgrade to latest lockstep release (v4.5.2)
+# Upgrade to latest lockstep release (v4.5.3)
 pipx upgrade jpit
 ```
 

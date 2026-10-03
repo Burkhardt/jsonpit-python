@@ -119,3 +119,43 @@ def test_explicit_paths_work_without_config() -> None:
 				OsConfig.reset()
 	finally:
 		shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_cr051_shortcut_and_symlink_cloud_path_classification() -> None:
+	"""
+	CR051 Acceptance Test: is_cloud_path recognizes symbolic shortcuts and
+	resolves links across existing parent directories, matching OsLib ConfiguredCloudPaths.
+	"""
+	temp_dir = Path(tempfile.mkdtemp(prefix="jsonpit_cr051_"))
+	try:
+		real_cloud_root = temp_dir / "RealCloudStorage" / "GoogleDrive-rainer@example.com" / "My Drive"
+		real_cloud_root.mkdir(parents=True)
+		shortcuts_dir = temp_dir / "CloudStorage"
+		shortcuts_dir.mkdir(parents=True)
+		shortcut_link = shortcuts_dir / "GoogleDrive-Personal"
+		shortcut_link.symlink_to(real_cloud_root)
+
+		# Scenario A: Config has real root, access via shortcut path
+		config_a = OsConfig({"Cloud": {"GoogleDrive": str(real_cloud_root)}})
+		# Existing file via shortcut
+		existing_via_shortcut = shortcut_link / "Data" / "test.pit"
+		(real_cloud_root / "Data").mkdir(parents=True)
+		(real_cloud_root / "Data" / "test.pit").write_text("{}", encoding="utf-8")
+		assert config_a.is_cloud_path(existing_via_shortcut) is True
+
+		# Non-existent file via shortcut
+		new_via_shortcut = shortcut_link / "Data" / "new_entity.pit"
+		assert config_a.is_cloud_path(new_via_shortcut) is True
+
+		# Scenario B: Config has shortcut root, access via real root
+		config_b = OsConfig({"Cloud": {"GoogleDrivePersonal": str(shortcut_link)}})
+		assert config_b.is_cloud_path(real_cloud_root / "Data" / "test.pit") is True
+		assert config_b.is_cloud_path(real_cloud_root / "Data" / "new_entity.pit") is True
+
+		# Outside path is not recognized as cloud
+		outside = temp_dir / "OtherDir" / "file.pit"
+		assert config_a.is_cloud_path(outside) is False
+		assert config_b.is_cloud_path(outside) is False
+	finally:
+		shutil.rmtree(temp_dir, ignore_errors=True)
+

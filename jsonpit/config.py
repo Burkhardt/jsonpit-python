@@ -354,12 +354,27 @@ class OsConfig:
 		return None
 
 	def is_cloud_path(self, path: Path | str) -> bool:
-		"""Returns True if the target path is inside any known cloud drive root."""
+		"""
+		Returns True if the target path is inside any known cloud drive root.
+		Resolves symbolic shortcuts and existing ancestors matching CR051.
+		"""
 		target = Path(os.path.abspath(os.path.expanduser(str(path))))
+		try:
+			target_resolved = target.resolve()
+		except Exception:
+			target_resolved = target
+
 		for root in self.clouds.values():
 			try:
-				target.relative_to(root)
-				return True
-			except ValueError:
-				continue
+				root_resolved = root.resolve()
+			except Exception:
+				root_resolved = root
+
+			for cand in (target, target_resolved):
+				for r in (root, root_resolved):
+					try:
+						cand.relative_to(r)
+						return True
+					except ValueError:
+						continue
 		return False
