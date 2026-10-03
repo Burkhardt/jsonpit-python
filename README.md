@@ -67,7 +67,8 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
   <em>Maintenance &amp; Recovery Audit · Vector SVG: <a href="https://github.com/Burkhardt/jsonpit-python/blob/main/doc/uml/jsonpit_opsCD.svg">jsonpit_opsCD.svg</a></em>
 </p>
 
-> 📖 **Architecture & Full API:**  
+> 📖 **Architecture, Guides & Full API:**  
+> • For a hands-on practical walkthrough with Python library and CLI examples, see **[GettingStarted.md](https://github.com/Burkhardt/jsonpit-python/blob/main/GettingStarted.md)**.  
 > • For the complete unified architecture across all subsystems, see **[jsonpit_unifiedCD.svg](https://github.com/Burkhardt/jsonpit-python/blob/main/doc/uml/jsonpit_unifiedCD.svg)**.  
 > • For comprehensive method signatures, exception contracts, and protocol details, see **[API.md](https://github.com/Burkhardt/jsonpit-python/blob/main/API.md)**.
 
