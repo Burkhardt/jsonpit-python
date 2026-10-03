@@ -28,7 +28,7 @@ It is based on `jsonpit` v4.5.2, featuring 100% lockstep parity with C# `JsonPit
 To install the entire suite of CLI tools (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) directly on any machine into `~/.local/bin` without cloning any repository or requiring `sudo`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.0 local
+curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.2 local
 ```
 
 Verify your installation:
@@ -57,20 +57,34 @@ uv add jsonpit
 
 ---
 
-## 4. Configuration & Cloud Roots
+## 4. Configuration & Simplified Cloud Shortcuts
 
-`jsonpit` automatically reads your cloud provider root from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`):
+`jsonpit` automatically reads your cloud provider roots from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`).
 
-```json5
-{
-  Cloud: {
-    OneDrive: "~/Cloud/OneDrive-AfricaStage/",
-    GoogleDrive: "~/Library/CloudStorage/GoogleDrive-me@example.com/"
-  }
-}
+### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu) (v4.5.2)
+
+On macOS and Linux, enable your cloud clients (iCloud, OneDrive, Google Drive, Dropbox), then use [`amafu`](https://www.nuget.org/packages/Amafu) to auto-detect your local sync folders and create clean, unified shortcuts in `~/.CloudStorage/`:
+
+```bash
+# 1. Preview detected roots and proposed shortcuts:
+amafu detect --create-links --dry-run
+
+# 2. Initialize configuration AND create shortcuts in ~/.CloudStorage/:
+amafu init --create-links
 ```
 
-If no configuration file exists, you can pass explicit directory paths directly, or run `amafu init` to auto-detect your cloud drives.
+If you already have a configuration and just want to create the shortcuts:
+```bash
+amafu detect --create-links
+```
+
+This creates convenient, unified symbolic links:
+- `~/.CloudStorage/ICloudDrive` $\rightarrow$ `~/Library/Mobile Documents/com~apple~CloudDocs/`
+- `~/.CloudStorage/GoogleDrive` $\rightarrow$ `~/Library/CloudStorage/GoogleDrive-.../My Drive/`
+- `~/.CloudStorage/OneDrive` $\rightarrow$ `~/Library/CloudStorage/OneDrive-.../`
+- `~/.CloudStorage/Dropbox` $\rightarrow$ `~/Library/CloudStorage/Dropbox/`
+
+You never have to search for obscure operating system cloud paths again. Your real files stay safely in their original cloud folders, and your Python code or terminal sessions can easily use `~/.CloudStorage/<provider>` or reference the provider name directly (e.g. `cloud="ICloudDrive"`).
 
 ---
 
