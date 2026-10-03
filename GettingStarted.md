@@ -43,15 +43,12 @@ Verify the installation:
 jpit -v
 ```
 
-### Method 2: Fleet Provisioning via `install-clis.sh` (RAIkeep Suite)
+### Method 2: Install All 5 CLIs (`amafu`, `raid`, `iorg`, `pits`, `jpit`)
 
-If you have cloned the [RAIkeep](https://github.com/Burkhardt/RAIkeep) repository on your development machine (`Nkosikazi`), you can provision all 5 CLIs (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) across your entire fleet in a single command over SSH without logging into each machine manually:
+To install the entire suite of CLI tools into `~/.local/bin` using the public installer script from GitHub:  
+👉 **[`install-clis.sh` on GitHub](https://github.com/Burkhardt/RAIkeep/blob/main/scripts/install-clis.sh)**
 
-```bash
-cd ~/Projects/GitHub/RAIkeep && ./scripts/install-clis.sh 4.5.0 all
-```
-
-If you are already logged into a remote machine and want to run the installer without cloning the repository:
+Run this one-liner directly in your terminal (no repository cloning needed):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.0 local
 ```
