@@ -6,6 +6,7 @@ change tracking (dirty state), and audited deletion backdating.
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import datetime
 import json
@@ -77,6 +78,178 @@ class TimestampedValue:
 		return self.value == other.value and self.time == other.time
 
 
+class ObservableDict(dict[str, Any]):
+	"""
+	Dictionary subclass that notifies a parent observer callback on mutation.
+	Wraps nested dictionaries and lists recursively to enable deep live change tracking
+	with 100% C# JObject / INotifyCollectionChanged parity.
+	"""
+
+	def __init__(self, *args: Any, **kwargs: Any) -> None:
+		super().__init__()
+		self._observer: Any = None
+		self.update(*args, **kwargs)
+
+	def _set_observer(self, observer: Any) -> None:
+		self._observer = observer
+		for v in self.values():
+			if isinstance(v, (ObservableDict, ObservableList)):
+				v._set_observer(observer)
+
+	def __setitem__(self, key: str, value: Any) -> None:
+		wrapped = _wrap_observable(value, self._observer)
+		super().__setitem__(key, wrapped)
+		if self._observer is not None and key not in ("Modified", "Deleted"):
+			self._observer()
+
+	def __delitem__(self, key: str) -> None:
+		super().__delitem__(key)
+		if self._observer is not None:
+			self._observer()
+
+	def pop(self, key: str, *args: Any) -> Any:
+		res = super().pop(key, *args)
+		if self._observer is not None:
+			self._observer()
+		return res
+
+	def clear(self) -> None:
+		super().clear()
+		if self._observer is not None:
+			self._observer()
+
+	def update(self, *args: Any, **kwargs: Any) -> None:
+		other = dict(*args, **kwargs)
+		for k, v in other.items():
+			self[k] = v
+
+	def __deepcopy__(self, memo: Any) -> ObservableDict:
+		copied = ObservableDict()
+		memo[id(self)] = copied
+		for k, v in self.items():
+			copied[copy.deepcopy(k, memo)] = copy.deepcopy(v, memo)
+		return copied
+
+
+class ObservableList(list[Any]):
+	"""
+	List subclass that notifies a parent observer callback on mutation.
+	Wraps nested dictionaries and lists recursively to enable deep live change tracking
+	with 100% C# JArray / INotifyCollectionChanged parity.
+	"""
+
+	def __init__(self, *args: Any) -> None:
+		super().__init__()
+		self._observer: Any = None
+		if args:
+			self.extend(args[0])
+
+	def _set_observer(self, observer: Any) -> None:
+		self._observer = observer
+		for item in self:
+			if isinstance(item, (ObservableDict, ObservableList)):
+				item._set_observer(observer)
+
+	def __setitem__(self, index: Any, value: Any) -> None:
+		wrapped = _wrap_observable(value, self._observer)
+		super().__setitem__(index, wrapped)
+		if self._observer is not None:
+			self._observer()
+
+	def __delitem__(self, index: Any) -> None:
+		super().__delitem__(index)
+		if self._observer is not None:
+			self._observer()
+
+	def append(self, value: Any) -> None:
+		wrapped = _wrap_observable(value, self._observer)
+		super().append(wrapped)
+		if self._observer is not None:
+			self._observer()
+
+	def extend(self, values: Any) -> None:
+		wrapped = [_wrap_observable(v, self._observer) for v in values]
+		super().extend(wrapped)
+		if self._observer is not None:
+			self._observer()
+
+	def insert(self, index: int, value: Any) -> None:
+		wrapped = _wrap_observable(value, self._observer)
+		super().insert(index, wrapped)
+		if self._observer is not None:
+			self._observer()
+
+	def pop(self, *args: Any) -> Any:
+		res = super().pop(*args)
+		if self._observer is not None:
+			self._observer()
+		return res
+
+	def remove(self, value: Any) -> None:
+		super().remove(value)
+		if self._observer is not None:
+			self._observer()
+
+	def clear(self) -> None:
+		super().clear()
+		if self._observer is not None:
+			self._observer()
+
+	def __deepcopy__(self, memo: Any) -> ObservableList:
+		copied = ObservableList()
+		memo[id(self)] = copied
+		for item in self:
+			copied.append(copy.deepcopy(item, memo))
+		return copied
+
+
+def _clean_dict(val: Any) -> Any:
+	"""Creates a pure python JSON-safe copy without attached observers."""
+	if isinstance(val, dict):
+		return {str(k): _clean_dict(v) for k, v in val.items()}
+	elif isinstance(val, list):
+		return [_clean_dict(x) for x in val]
+	return copy.deepcopy(val)
+
+
+def _wrap_observable(value: Any, observer: Any) -> Any:
+	if isinstance(value, dict) and not isinstance(value, ObservableDict):
+		obs = ObservableDict()
+		for k, v in value.items():
+			obs[k] = _wrap_observable(v, observer)
+		obs._set_observer(observer)
+		return obs
+	elif isinstance(value, ObservableDict):
+		value._set_observer(observer)
+		return value
+	elif isinstance(value, list) and not isinstance(value, ObservableList):
+		obs_list = ObservableList()
+		for v in value:
+			obs_list.append(_wrap_observable(v, observer))
+		obs_list._set_observer(observer)
+		return obs_list
+	elif isinstance(value, ObservableList):
+		value._set_observer(observer)
+		return value
+	return value
+
+
+def _reconcile_dict(target: dict[str, Any], source: dict[str, Any], observer: Any) -> None:
+	"""Reconciles target dictionary from source in place, preserving object identities."""
+	for k, v in source.items():
+		curr = target.get(k)
+		if isinstance(curr, dict) and isinstance(v, dict):
+			_reconcile_dict(curr, v, observer)
+		elif isinstance(curr, list) and isinstance(v, list):
+			curr.clear()
+			curr.extend([_wrap_observable(copy.deepcopy(x), observer) for x in v])
+		else:
+			target[k] = _wrap_observable(copy.deepcopy(v), observer)
+	for k in list(target.keys()):
+		if k not in source:
+			del target[k]
+
+
 class PitItem(MutableMapping[str, Any]):
 	"""
 	JSON-backed living domain entity with metadata and change tracking.
@@ -97,11 +270,16 @@ class PitItem(MutableMapping[str, Any]):
 	) -> None:
 		self._data: dict[str, Any] = {}
 		self._dirty: bool = False
+		self._refreshing: bool = False
+		self._bound_id: str | None = None
+		self._client_supplied_lifecycle_attribute: str | None = None
 		self._pit_ref: weakref.ref[Any] | None = weakref.ref(pit) if pit is not None else None
 
 		if isinstance(initial, PitItem):
-			self._data = copy.deepcopy(initial._data)
+			self._data = _wrap_observable(copy.deepcopy(initial._data), self._on_mutation)
 			self._dirty = initial._dirty
+			self._bound_id = initial._bound_id or initial.id
+			self._client_supplied_lifecycle_attribute = initial._client_supplied_lifecycle_attribute
 			if pit is not None:
 				self._pit_ref = weakref.ref(pit)
 			if id is not None:
@@ -110,16 +288,30 @@ class PitItem(MutableMapping[str, Any]):
 				self._data["Note"] = note
 			if modified is not None:
 				self.modified = modified
-			if invalidate:
-				self.invalidate()
 			return
 
 		if isinstance(initial, dict):
+			if "Modified" in initial or "modified" in initial:
+				self._client_supplied_lifecycle_attribute = (
+					"Modified" if "Modified" in initial else "modified"
+				)
+			if "Deleted" in initial or "deleted" in initial:
+				self._client_supplied_lifecycle_attribute = (
+					"Deleted" if "Deleted" in initial else "deleted"
+				)
 			self._data = copy.deepcopy(initial)
 		elif isinstance(initial, str):
 			trimmed = initial.strip()
 			if trimmed.startswith("{") and trimmed.endswith("}"):
 				self._data = json.loads(trimmed)
+				if "Modified" in self._data or "modified" in self._data:
+					self._client_supplied_lifecycle_attribute = (
+						"Modified" if "Modified" in self._data else "modified"
+					)
+				if "Deleted" in self._data or "deleted" in self._data:
+					self._client_supplied_lifecycle_attribute = (
+						"Deleted" if "Deleted" in self._data else "deleted"
+					)
 			else:
 				self._data["Id"] = initial
 		elif initial is not None:
@@ -161,15 +353,65 @@ class PitItem(MutableMapping[str, Any]):
 		else:
 			self.modified = utcnow()
 
-		if invalidate:
-			self.invalidate()
-		else:
-			self.validate()
+		self._data = _wrap_observable(self._data, self._on_mutation)
+		self._dirty = bool(invalidate)
+
+	@contextlib.contextmanager
+	def suppress_notifications(self) -> Iterator[None]:
+		"""Context manager to suppress live mutation notifications (simulating unnotified edits)."""
+		prev = self._refreshing
+		self._refreshing = True
+		try:
+			yield
+		finally:
+			self._refreshing = prev
+
+	def _on_mutation(self) -> None:
+		"""Dispatches live changes immediately to bound parent Pit container."""
+		if self._refreshing:
+			return
+		self._dirty = True
+		p = self.pit
+		if p is not None and hasattr(p, "accept_live_changes"):
+			p.accept_live_changes(self)
+
+	def ensure_valid_for_live_add(self) -> None:
+		"""Validates an entity at a live write boundary (CR040 / CR049)."""
+		if not self.id or not self.id.strip():
+			raise ValueError("Entity Id must be a non-empty string.")
+		if not self.deleted and ("{" in self.id or "<" in self.id):
+			raise ValueError(
+				f"Entity Id '{self.id}' contains a prohibited template marker ('{{' or '<'). "
+				"Resolve template placeholders before writing to a Pit."
+			)
+		if self._client_supplied_lifecycle_attribute:
+			attr = self._client_supplied_lifecycle_attribute
+			raise ProtectedAttributeError(
+				f"Cannot manually set lifecycle attribute '{attr}' on live entity creation."
+			)
 
 	def bind(self, pit: Any) -> PitItem:
 		"""Binds this living entity to its parent Pit container."""
 		self._pit_ref = weakref.ref(pit) if pit is not None else None
+		self._bound_id = self.id
+		self._data = _wrap_observable(self._data, self._on_mutation)
 		return self
+
+	def _reconcile_from(self, source: PitItem | dict[str, Any]) -> None:
+		"""Reconciles internal state from incoming source while preserving held object references."""
+		self._refreshing = True
+		try:
+			src_dict = source.to_dict() if isinstance(source, PitItem) else source
+			_reconcile_dict(self._data, src_dict, self._on_mutation)
+			if "Modified" in src_dict:
+				mod = src_dict["Modified"]
+				self.modified = parse_iso_timestamp(mod) if isinstance(mod, str) else mod
+			if "Deleted" in src_dict:
+				self.deleted = bool(src_dict["Deleted"])
+			if "Note" in src_dict:
+				self.note = str(src_dict["Note"])
+		finally:
+			self._refreshing = False
 
 	@property
 	def pit(self) -> Any | None:
@@ -236,10 +478,10 @@ class PitItem(MutableMapping[str, Any]):
 		"""Marks this item as clean."""
 		self._dirty = False
 
-	def invalidate(self) -> None:
-		"""Marks this item as dirty and refreshes its Modified timestamp to UtcNow."""
+	def invalidate(self, modified: datetime.datetime | None = None) -> None:
+		"""Marks this item as dirty and refreshes its Modified timestamp."""
 		self._dirty = True
-		self.modified = utcnow()
+		self.modified = modified if modified is not None else utcnow()
 
 	# --- Domain Mutation & Tombstone Protocol ---
 
@@ -297,14 +539,14 @@ class PitItem(MutableMapping[str, Any]):
 		Resets Deleted to False and marks the entity dirty.
 		If bound to a Pit, automatically dispatches a sparse tombstone delta.
 		"""
+		if property_name.lower() in ("id", "modified", "deleted"):
+			raise ProtectedAttributeError(f"Cannot tombstone protected attribute '{property_name}'.")
 		self.deleted = False
-		self.invalidate()
 		self._data[property_name] = None
-		p = self.pit
-		if p is not None:
-			mutation = PitItem(id=self.id)
-			mutation.delete_property(property_name)
-			p.add(mutation)
+		if self.pit is None:
+			self.invalidate()
+		else:
+			self._on_mutation()
 
 	def delete_property_path(self, property_path: str) -> None:
 		"""
@@ -331,7 +573,8 @@ class PitItem(MutableMapping[str, Any]):
 			if isinstance(val, dict):
 				container = val
 			elif val is None or seg not in container:
-				created: dict[str, Any] = {}
+				created: dict[str, Any] = ObservableDict()
+				created._set_observer(self._on_mutation)
 				container[seg] = created
 				container = created
 			else:
@@ -341,12 +584,10 @@ class PitItem(MutableMapping[str, Any]):
 
 		container[segments[-1]] = None
 		self.deleted = False
-		self.invalidate()
-		p = self.pit
-		if p is not None:
-			mutation = PitItem(id=self.id)
-			mutation.delete_property_path(property_path)
-			p.add(mutation)
+		if self.pit is None:
+			self.invalidate()
+		else:
+			self._on_mutation()
 
 	def delete(self, by: str | None = None, backdate_100: bool = True) -> bool:
 		"""
@@ -358,20 +599,25 @@ class PitItem(MutableMapping[str, Any]):
 		if self.deleted:
 			return False
 
-		self.deleted = True
-		self._dirty = True
-		if backdate_100:
-			self.modified = utcnow() - datetime.timedelta(seconds=100)
-		else:
-			self.modified = utcnow()
-
-		audit_entry = f"[{format_iso_timestamp(self.modified)}] deleted"
-		if by:
-			audit_entry += f" by {by}"
-		self.note = f"{audit_entry};\n{self.note}" if self.note else f"{audit_entry};"
 		p = self.pit
 		if p is not None:
-			p.delete_item(self.id, by=by, backdate_100=backdate_100)
+			return p.delete_item(self.id, by=by, backdate_100=backdate_100)
+
+		self._refreshing = True
+		try:
+			self.deleted = True
+			self._dirty = True
+			if backdate_100:
+				self.modified = utcnow() - datetime.timedelta(seconds=100)
+			else:
+				self.modified = utcnow()
+
+			audit_entry = f"[{format_iso_timestamp(self.modified)}] deleted"
+			if by:
+				audit_entry += f" by {by}"
+			self.note = f"{audit_entry};\n{self.note}" if self.note else f"{audit_entry};"
+		finally:
+			self._refreshing = False
 		return True
 
 	def _apply_extend(self, obj: dict[str, Any]) -> bool:
@@ -389,22 +635,30 @@ class PitItem(MutableMapping[str, Any]):
 		changed = canonical_json(self.to_dict()) != original_canonical
 		if changed:
 			self.deleted = False
-			self.invalidate()
+			if self.pit is None:
+				self.invalidate()
 		return changed
 
 	def extend_with(self, obj: dict[str, Any]) -> bool:
 		"""
 		Deep merges a dictionary into this entity.
 		Arrays are replaced; objects are recursively merged; nulls (tombstones) are preserved.
-		If bound to a Pit, automatically dispatches a sparse delta fragment.
+		If bound to a Pit, automatically dispatches a single sparse delta fragment.
 		Returns True if any value was modified.
 		"""
-		changed = self._apply_extend(obj)
-		p = self.pit
-		if changed and p is not None:
-			delta = copy.deepcopy(obj)
-			delta["Id"] = self.id
-			p.add(PitItem(delta))
+		for k in obj:
+			if k.lower() in ("id", "modified", "deleted"):
+				raise ProtectedAttributeError(f"Cannot manually mutate protected attribute '{k}'.")
+		self._refreshing = True
+		try:
+			changed = self._apply_extend(obj)
+		finally:
+			self._refreshing = False
+
+		if changed:
+			self._data = _wrap_observable(self._data, self._on_mutation)
+			if self.pit is not None:
+				self._on_mutation()
 		return changed
 
 	def extend(self, json_string: str) -> bool:
@@ -426,7 +680,7 @@ class PitItem(MutableMapping[str, Any]):
 
 	def to_dict(self) -> dict[str, Any]:
 		"""Returns a clean JSON-serializable dictionary representation."""
-		result = copy.deepcopy(self._data)
+		result = _clean_dict(self._data)
 		result["Id"] = self.id
 		result["Modified"] = format_iso_timestamp(self.modified)
 		result["Deleted"] = self.deleted
@@ -462,33 +716,28 @@ class PitItem(MutableMapping[str, Any]):
 		return self._data[key]
 
 	def __setitem__(self, key: str, value: Any) -> None:
-		if key == "Id":
-			self.id = str(value)
-		elif key == "Modified":
-			if isinstance(value, datetime.datetime):
-				self.modified = value
-			else:
-				self.modified = parse_iso_timestamp(str(value))
-		elif key == "Deleted":
-			self.deleted = bool(value)
+		if key.lower() == "id":
+			raise ProtectedAttributeError("Cannot mutate Id property directly. Use Pit.rename_id().")
+		elif key.lower() in ("modified", "deleted"):
+			raise ProtectedAttributeError(f"Cannot manually mutate protected attribute '{key}'.")
 		elif key == "Note":
 			self.note = str(value)
 		else:
-			self._data[key] = value
-			self.invalidate()
-			p = self.pit
-			if p is not None:
-				p.add(PitItem({"Id": self.id, key: value}))
+			self._data[key] = _wrap_observable(value, self._on_mutation)
+			if self.pit is None:
+				self.invalidate()
+			else:
+				self._on_mutation()
 
 	def __delitem__(self, key: str) -> None:
+		if key.lower() in ("id", "modified", "deleted"):
+			raise ProtectedAttributeError(f"Cannot delete protected attribute '{key}'.")
 		if key in self._data:
 			del self._data[key]
-		self.invalidate()
-		p = self.pit
-		if p is not None:
-			mutation = PitItem(id=self.id)
-			mutation.delete_property(key)
-			p.add(mutation)
+		if self.pit is None:
+			self.invalidate()
+		else:
+			self._on_mutation()
 
 	def __iter__(self) -> Iterator[str]:
 		# Ensure Id, Modified, Deleted are always visible in key enumeration

@@ -4,11 +4,11 @@ Encapsulates directory ecosystems, context manager transactions, distributed lea
 coordination, change-file streaming, receipt-based cleanup, and Mapping protocols.
 """
 
-from __future__ import annotations
-
+import abc
 import copy
 from dataclasses import dataclass, field
 import datetime
+import enum
 import hashlib
 import json
 import os
@@ -26,6 +26,7 @@ from .canonical import (
 from .changes import ChangeFile, ReceiptFile
 from .config import OsConfig, loads_json5
 from .exceptions import (
+	ObjectDisposedError,
 	PitConcurrencyError,
 	PitCorruptError,
 	PitInstanceConflictError,
@@ -51,6 +52,109 @@ from .fs import (
 )
 from .history import PitItems
 from .item import PitItem, TimestampedValue
+
+
+class MutationTrackingMode(enum.Enum):
+	"""In-memory mutation policy. Never persisted in a pit or change file."""
+	TrackedChangesOnly = "TrackedChangesOnly"
+	TrackedChangesWithFallback = "TrackedChangesWithFallback"
+
+	# Upper-case aliases for Pythonic convention
+	TRACKED_CHANGES_ONLY = TrackedChangesOnly
+	TRACKED_CHANGES_WITH_FALLBACK = TrackedChangesWithFallback
+
+
+class PitMeta(abc.ABCMeta):
+	"""Metaclass allowing class-level properties on Pit (CR003 / v4.5.0 parity)."""
+	_default_mutation_tracking_mode: MutationTrackingMode = (
+		MutationTrackingMode.TrackedChangesWithFallback
+	)
+
+	@property
+	def default_mutation_tracking_mode(cls) -> MutationTrackingMode:
+		return cls._default_mutation_tracking_mode
+
+	@default_mutation_tracking_mode.setter
+	def default_mutation_tracking_mode(cls, value: MutationTrackingMode | str) -> None:
+		if isinstance(value, str):
+			value = MutationTrackingMode(value)
+		if not isinstance(value, MutationTrackingMode):
+			raise ValueError(f"Invalid MutationTrackingMode: {value}")
+		cls._default_mutation_tracking_mode = value
+
+	@property
+	def DefaultMutationTrackingMode(cls) -> MutationTrackingMode:
+		return cls.default_mutation_tracking_mode
+
+	@DefaultMutationTrackingMode.setter
+	def DefaultMutationTrackingMode(cls, value: MutationTrackingMode | str) -> None:
+		cls.default_mutation_tracking_mode = value
+
+
+class LiveSlot:
+	"""Holds current live PitItem instance and accepted baseline."""
+	def __init__(
+		self,
+		id: str = "",
+		current: PitItem | None = None,
+		baseline: dict[str, Any] | None = None,
+	) -> None:
+		self.id: str = id
+		self.gate = threading.RLock()
+		self.current: PitItem | None = current
+		self.baseline: dict[str, Any] = baseline if baseline is not None else {}
+
+
+@dataclass
+class TimeValue:
+	"""Point-in-time value wrapper matching C# KeyValuePair<DateTimeOffset, JToken>."""
+	key: datetime.datetime
+	value: Any
+
+	@property
+	def Key(self) -> datetime.datetime:
+		return self.key
+
+	@property
+	def Value(self) -> Any:
+		return self.value
+
+
+def dict_difference(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
+	"""
+	Objects contribute leaf deltas; arrays remain atomic JSON values.
+	Emits None (tombstone) when a property existed in 'before' and is deleted or set to None in 'after'.
+	"""
+	changes: dict[str, Any] = {}
+	all_keys = set(before.keys()) | set(after.keys())
+	for key in sorted(all_keys):
+		if key not in after or after[key] is None:
+			if key in before and before[key] is not None:
+				changes[key] = None
+			continue
+		if key not in before:
+			changes[key] = copy.deepcopy(after[key])
+			continue
+		old_val = before[key]
+		new_val = after[key]
+		if old_val == new_val:
+			continue
+		if isinstance(old_val, dict) and isinstance(new_val, dict):
+			nested = dict_difference(old_val, new_val)
+			if nested:
+				changes[key] = nested
+		else:
+			changes[key] = copy.deepcopy(new_val)
+	return changes
+
+
+def validate_property_mutation_payload(payload: dict[str, Any]) -> None:
+	"""Validates that protected attributes are not modified in sparse deltas."""
+	for k in payload:
+		if k.lower() in ("id", "modified", "deleted"):
+			raise ProtectedAttributeError(
+				f"Cannot manually mutate protected attribute '{k}' in sparse mutation."
+			)
 
 
 def has_non_empty_string_id(item: Any) -> bool:
@@ -335,7 +439,7 @@ class PitMaintenanceResult:
 		}
 
 
-class Pit(JsonPitBase, MutableMapping[str, PitItem]):
+class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 	"""
 	Domain Aggregate Root for a Pit directory ecosystem.
 	Encapsulates entity lifecycles, dirty state tracking, and cloud transactions.
@@ -355,6 +459,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		retain_window: bool = False,
 		default_max_count: int = 10,
 		autoload: bool = True,
+		tracking_mode: MutationTrackingMode | str | None = None,
 	) -> None:
 		super().__init__(
 			pit_dir=pit_dir,
@@ -367,11 +472,174 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		)
 		self.default_max_count = default_max_count
 		self.autoload = autoload
+		if tracking_mode is not None:
+			self._tracking_mode = (
+				MutationTrackingMode(tracking_mode)
+				if isinstance(tracking_mode, str)
+				else tracking_mode
+			)
+		else:
+			self._tracking_mode = self.__class__.default_mutation_tracking_mode
+
 		self._historic_items: dict[str, PitItems] = {}
+		self._live_items: dict[str, LiveSlot] = {}
 		self._disposed = False
 		self._owned_canonical_path: str | None = None
 
 		self._register_path_ownership()
+
+		if self.autoload:
+			if self.canonical_file.is_file():
+				self.load()
+			if not self.unflagged:
+				self.merge_changes()
+
+	# --- Live Mutation Tracking Mode & Properties ---
+
+	@property
+	def tracking_mode(self) -> MutationTrackingMode:
+		"""The immutable policy captured for this instance's lifetime in memory."""
+		return self._tracking_mode
+
+	@property
+	def TrackingMode(self) -> MutationTrackingMode:
+		return self._tracking_mode
+
+	@property
+	def historic_items(self) -> dict[str, PitItems]:
+		return self._historic_items
+
+	@property
+	def HistoricItems(self) -> dict[str, PitItems]:
+		return self._historic_items
+
+	def _ensure_live_owner(self, live: PitItem) -> None:
+		if self._disposed:
+			raise ObjectDisposedError(f"Pit '{self.pit_name}' has been closed/disposed.")
+		item_id = getattr(live, "_bound_id", None) or live.id
+		slot = self._live_items.get(item_id)
+		if slot is None or slot.current is not live:
+			raise RuntimeError(f"Item '{item_id}' is not the current live item of this Pit.")
+		if live.deleted:
+			raise RuntimeError(f"Item '{item_id}' has been deleted.")
+
+	def _flush_live_item(self, slot: LiveSlot) -> bool:
+		live = slot.current
+		if live is None or live._refreshing:
+			return False
+		current_dict = live.to_dict()
+		changes = dict_difference(slot.baseline, current_dict)
+		if not changes:
+			return False
+		try:
+			validate_property_mutation_payload(changes)
+			sparse_payload = copy.deepcopy(changes)
+			item_id = slot.id or getattr(live, "_bound_id", None) or live.id
+			sparse_payload["Id"] = item_id
+			frag = PitItem(sparse_payload, invalidate=False)
+			return self._append_fragment(slot, frag, refresh_modified=True)
+		except Exception:
+			if slot.baseline:
+				live._reconcile_from(slot.baseline)
+			raise
+
+	def flush_live_items(self) -> None:
+		"""Flushes silent in-place mutations against baseline for all active live items."""
+		if self.tracking_mode != MutationTrackingMode.TrackedChangesWithFallback:
+			return
+		for slot in list(self._live_items.values()):
+			with slot.gate:
+				self._flush_live_item(slot)
+
+	def accept_live_changes(self, live: PitItem) -> bool:
+		"""Receives immediate notification of property/nested mutations from PitItem/ObservableDict."""
+		if self._disposed:
+			raise ObjectDisposedError(f"Pit '{self.pit_name}' has been closed/disposed.")
+		item_id = getattr(live, "_bound_id", None) or live.id
+		with self._locker:
+			slot = self._live_items.get(item_id)
+			if slot is None:
+				slot = LiveSlot(id=item_id, current=live, baseline=copy.deepcopy(live.to_dict()))
+				self._live_items[item_id] = slot
+
+		with slot.gate:
+			try:
+				self._ensure_live_owner(live)
+				return self._flush_live_item(slot)
+			except Exception:
+				if slot.baseline:
+					live._reconcile_from(slot.baseline)
+				raise
+
+	def _append_fragment(
+		self,
+		slot: LiveSlot,
+		item: PitItem,
+		refresh_modified: bool = True,
+		adopt_item: PitItem | None = None,
+	) -> bool:
+		if refresh_modified:
+			item.invalidate()
+		else:
+			item.validate()
+
+		with self._locker:
+			current = self._historic_items.get(item.id) or PitItems.create(
+				item.id, self.default_max_count
+			)
+			updated = current.push(item)
+			self._historic_items[item.id] = updated
+
+		projected = updated.project_state(with_deleted=True)
+		if projected is None:
+			slot.current = None
+			return True
+
+		if slot.current is None or (slot.current.deleted and not projected.deleted):
+			adopted = adopt_item if adopt_item is not None else projected
+			adopted.bind(self)
+			slot.id = item.id
+			slot.current = adopted
+			slot.baseline = copy.deepcopy(projected.to_dict())
+			adopted._reconcile_from(projected)
+		else:
+			slot.id = item.id
+			slot.baseline = copy.deepcopy(projected.to_dict())
+			slot.current._reconcile_from(projected)
+		return True
+
+	def _publish_live_state(
+		self,
+		slot: LiveSlot,
+		item_id: str,
+		history: PitItems | None,
+		original: PitItem | None = None,
+	) -> None:
+		projected = history.project_state(with_deleted=True) if history else None
+		if projected is None:
+			slot.current = None
+			return
+		if slot.current is None or (slot.current.deleted and not projected.deleted):
+			adopted = original if original is not None else projected
+			adopted.bind(self)
+			slot.id = item_id
+			slot.current = adopted
+			slot.baseline = copy.deepcopy(projected.to_dict())
+			adopted._reconcile_from(projected)
+		else:
+			slot.id = item_id
+			slot.baseline = copy.deepcopy(projected.to_dict())
+			slot.current._reconcile_from(projected)
+
+	def _publish_all_live_state(self) -> None:
+		all_keys = set(self._historic_items.keys()) | set(self._live_items.keys())
+		for item_id in all_keys:
+			slot = self._live_items.get(item_id)
+			if slot is None:
+				slot = LiveSlot()
+				self._live_items[item_id] = slot
+			with slot.gate:
+				self._publish_live_state(slot, item_id, self._historic_items.get(item_id))
 
 	# --- Path Ownership Registry (CR003 §4) ---
 
@@ -420,18 +688,27 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 				if self.has_dirty_items():
 					self.save()
 		finally:
-			self.close()
+			self.close(save_dirty=(exc_type is None))
 
-	def close(self) -> None:
+	def close(self, save_dirty: bool = True) -> None:
 		"""Explicitly releases process activity flags and path ownership."""
 		if self._disposed:
 			return
 		try:
+			self.flush_live_items()
+			if save_dirty and not self.read_only:
+				if self.has_dirty_items():
+					self.save()
 			if not self.retain_window:
 				self.try_release_process_window()
 		finally:
 			self._release_path_ownership()
 			self._disposed = True
+
+	def dispose(self) -> None:
+		self.close(save_dirty=True)
+
+	Dispose = dispose
 
 	# --- Factory ---
 
@@ -448,6 +725,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		retain_window: bool = False,
 		default_max_count: int = 10,
 		autoload: bool = True,
+		tracking_mode: MutationTrackingMode | str | None = None,
 	) -> Pit:
 		"""
 		Opens a Pit directory using the Cloud-First Triad or explicit local path.
@@ -469,6 +747,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			retain_window=retain_window,
 			default_max_count=default_max_count,
 			autoload=autoload,
+			tracking_mode=tracking_mode,
 		)
 
 	# --- State Loading & Ingestion ---
@@ -490,20 +769,32 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			if not isinstance(data, list):
 				raise PitCorruptError(f"Pit snapshot in {self.canonical_file} must be a JSON array.")
 
+			candidate: dict[str, PitItems] = {}
+			for history_entry in data:
+				if not isinstance(history_entry, list):
+					continue
+				fragments: list[PitItem] = []
+				key: str | None = None
+				for raw_frag in history_entry:
+					if isinstance(raw_frag, dict):
+						frag = PitItem(raw_frag, invalidate=False)
+						fragments.append(frag)
+						if not key:
+							key = frag.id
+				if key:
+					candidate[key] = PitItems(key, fragments, self.default_max_count)
+
 			with self._locker:
-				for history_entry in data:
-					if not isinstance(history_entry, list):
-						continue
-					fragments: list[PitItem] = []
-					key: str | None = None
-					for raw_frag in history_entry:
-						if isinstance(raw_frag, dict):
-							item = PitItem(raw_frag, invalidate=False)
-							fragments.append(item)
-							if not key:
-								key = item.id
-					if key:
-						self._historic_items[key] = PitItems(key, fragments, self.default_max_count)
+				self.flush_live_items()
+				# Preserve unpersisted dirty fragments across replacement of on-disk snapshot
+				for k, pit_items in self._historic_items.items():
+					for frag in pit_items.history:
+						if not frag.is_valid():
+							cand_history = candidate.get(k) or PitItems.create(k, self.default_max_count)
+							candidate[k] = cand_history.push(frag)
+
+				self._historic_items = candidate
+				self._publish_all_live_state()
 
 				if not undercover and not self.unflagged and not self.read_only:
 					self.process_flag.update()
@@ -547,31 +838,42 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 
 	# --- Entity Addition & Mutation ---
 
-	def add(self, item: PitItem, refresh_modified: bool = True) -> bool:
+	def add(self, item: PitItem | dict[str, Any], refresh_modified: bool = True) -> bool:
 		"""
 		Adds a PitItem as a new historical fragment.
-		If refresh_modified is True, refreshes Modified to UtcNow.
+		If refresh_modified is True, refreshes Modified to UtcNow and adopts live item.
 		"""
-		if not item.id:
+		if not isinstance(item, PitItem):
+			if isinstance(item, dict):
+				item = PitItem(item)
+			else:
+				raise TypeError(f"Expected PitItem or dict, got {type(item).__name__}")
+
+		if not item.id or not item.id.strip():
 			raise ValueError("PitItem must have a non-empty Id.")
-		if not item.deleted and ("{" in item.id or "<" in item.id):
-			raise ValueError(
-				f"Entity Id '{item.id}' contains a prohibited template marker ('{{' or '<'). "
-				"Resolve template placeholders before writing to a Pit."
-			)
+
+		if item.pit is not None and item.pit is not self:
+			raise RuntimeError(f"Item '{item.id}' belongs to another Pit instance.")
+
+		if refresh_modified:
+			item.ensure_valid_for_live_add()
 
 		with self._locker:
-			if refresh_modified:
-				item.invalidate()
-			else:
-				item.validate()
+			slot = self._live_items.get(item.id)
+			if slot is None:
+				slot = LiveSlot()
+				self._live_items[item.id] = slot
 
-			current = self._historic_items.get(item.id) or PitItems.create(
-				item.id, self.default_max_count
+		with slot.gate:
+			if self.tracking_mode == MutationTrackingMode.TrackedChangesWithFallback:
+				self._flush_live_item(slot)
+			adopt = refresh_modified and (slot.current is None or slot.current.deleted)
+			return self._append_fragment(
+				slot,
+				item,
+				refresh_modified=refresh_modified,
+				adopt_item=item if adopt else None,
 			)
-			updated = current.push(item)
-			self._historic_items[item.id] = updated
-			return True
 
 	def add_historical(self, item: PitItem) -> bool:
 		"""Adds a fragment while preserving its original Modified timestamp intact."""
@@ -584,8 +886,15 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		"""
 		tombstone = PitItem(id=item_id)
 		if tombstone.delete(by=by, backdate_100=backdate_100):
-			return self.add(tombstone, refresh_modified=True)
+			res = self.add(tombstone, refresh_modified=True)
+			with self._locker:
+				slot = self._live_items.get(item_id)
+				if slot is not None and slot.current is not None:
+					slot.current.deleted = True
+			return res
 		return False
+
+	# --- Entity Addition & Mutation Helpers ---
 
 	def rename_id(self, old_key: str, new_key: str, by: str | None = None) -> bool:
 		"""
@@ -613,11 +922,21 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 
 	def has_dirty_items(self) -> bool:
 		"""True if any entity fragment in memory has unpersisted modifications."""
+		if self.tracking_mode == MutationTrackingMode.TrackedChangesWithFallback:
+			for slot in self._live_items.values():
+				if slot.current is not None and not slot.current._refreshing:
+					if dict_difference(slot.baseline, slot.current.to_dict()):
+						return True
 		for pit_items in self._historic_items.values():
-			for frag in pit_items.history:
+			for frag in pit_items._history:
 				if not frag.is_valid():
 					return True
 		return False
+
+	def invalid(self) -> bool:
+		return self.has_dirty_items()
+
+	Invalid = invalid
 
 	# --- Persistence & Change Files ---
 
@@ -631,10 +950,13 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 			raise OSError(f"Cannot save read-only Pit '{self.pit_name}'.")
 
 		with self._locker:
+			self.flush_live_items()
 			if self.try_acquire_master():
 				self._store_canonical(force=force, pretty=pretty)
 			else:
 				self._create_change_files()
+
+	Save = save
 
 	def _store_canonical(self, force: bool = False, pretty: bool = False) -> bool:
 		"""Writes the complete point-in-time snapshot to <PitName>.pit."""
@@ -693,6 +1015,35 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 
 	# --- Change Merging & Receipt Cleanup (CR021) ---
 
+	def merge_into_history(self, change_items: PitItems) -> bool:
+		"""
+		Merges an external history stack into this Pit and reconciles live state.
+		100% C# Pit.MergeIntoHistory parity.
+		"""
+		with self._locker:
+			slot = self._live_items.get(change_items.key)
+			if slot is None:
+				slot = LiveSlot()
+				self._live_items[change_items.key] = slot
+
+		with slot.gate:
+			if self.tracking_mode == MutationTrackingMode.TrackedChangesWithFallback:
+				self._flush_live_item(slot)
+			with self._locker:
+				current = self._historic_items.get(change_items.key) or PitItems.create(
+					change_items.key, self.default_max_count
+				)
+				updated = current
+				for item in change_items.history:
+					updated = updated.push(item)
+				if updated == current:
+					return False
+				self._historic_items[change_items.key] = updated
+			self._publish_live_state(slot, change_items.key, updated)
+			return True
+
+	MergeIntoHistory = merge_into_history
+
 	def merge_changes(self) -> int:
 		"""
 		Discovers and merges change files from peer processes.
@@ -715,18 +1066,16 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 				for entry in payload:
 					if isinstance(entry, dict):
 						item = PitItem(entry, invalidate=False)
-						current = self._historic_items.get(item.id) or PitItems.create(
-							item.id, self.default_max_count
+						self.merge_into_history(
+							PitItems(item.id, [item], self.default_max_count)
 						)
-						self._historic_items[item.id] = current.push(item)
 					elif isinstance(entry, list):
 						for raw_frag in entry:
 							if isinstance(raw_frag, dict):
 								item = PitItem(raw_frag, invalidate=False)
-								current = self._historic_items.get(item.id) or PitItems.create(
-									item.id, self.default_max_count
+								self.merge_into_history(
+									PitItems(item.id, [item], self.default_max_count)
 								)
-								self._historic_items[item.id] = current.push(item)
 				merged_entries.append((cf, payload))
 				merged_count += 1
 
@@ -950,16 +1299,43 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		with_deleted: bool = False,
 	) -> PitItem | None:
 		"""
-		Returns the projected state of an entity.
+		Returns the projected live state of an entity.
+		If at is specified, returns an immutable detached historical snapshot.
 		If with_deleted is False, returns None for tombstoned entities.
 		"""
-		pit_items = self._historic_items.get(item_id)
-		if pit_items is None:
+		if self._disposed:
+			raise ObjectDisposedError(f"Pit '{self.pit_name}' has been closed/disposed.")
+		if not item_id:
 			return default
-		projected = pit_items.project_state(at=at, with_deleted=with_deleted)
-		if projected is not None and at is None and not self.read_only:
-			projected.bind(self)
-		return projected if projected is not None else default
+
+		if at is not None:
+			pit_items = self._historic_items.get(item_id)
+			if pit_items is None:
+				return default
+			projected = pit_items.project_state(at=at, with_deleted=with_deleted)
+			if projected is None:
+				return default
+			return PitItem(projected, invalidate=False)
+
+		with self._locker:
+			slot = self._live_items.get(item_id)
+			if slot is None:
+				slot = LiveSlot()
+				self._live_items[item_id] = slot
+
+		with slot.gate:
+			if slot.current is not None:
+				if slot.current.deleted and not with_deleted:
+					return default
+				return slot.current
+
+			pit_items = self._historic_items.get(item_id)
+			if pit_items is None:
+				return default
+			self._publish_live_state(slot, item_id, pit_items)
+			if slot.current is not None and not (slot.current.deleted and not with_deleted):
+				return slot.current
+			return default
 
 	def get_at(
 		self,
@@ -969,6 +1345,17 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 	) -> PitItem | None:
 		"""Point-in-time historical projection of an entity."""
 		return self.get(item_id, at=at, with_deleted=with_deleted)
+
+	def values_over_time(self, item_id: str, property_name: str) -> list[TimeValue]:
+		"""100% C# parity: historical property values across all fragments."""
+		pit_items = self._historic_items.get(item_id)
+		if pit_items is None:
+			return []
+		results: list[TimeValue] = []
+		for frag in pit_items.history:
+			val = None if frag.deleted else frag.get(property_name)
+			results.append(TimeValue(frag.modified, copy.deepcopy(val)))
+		return results
 
 	def contains(self, item_id: str, with_deleted: bool = False) -> bool:
 		"""100% C# parity: checks if an entity exists in living state."""
@@ -992,6 +1379,8 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 		pretty: bool = True,
 	) -> Path:
 		"""Exports undeleted entity projections to a JSON file."""
+		if at is None:
+			self.flush_live_items()
 		target = Path(export_path)
 		ensure_directory(target.parent)
 
@@ -1008,6 +1397,17 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 
 		safe_write_in_place(target, content)
 		return target
+
+	# --- C# Compatibility Aliases ---
+	Get = get
+	GetAt = get_at
+	ValuesOverTime = values_over_time
+	Contains = contains
+	AllUndeleted = all_undeleted
+	ExportJson = export_json
+	Load = load
+	Delete = delete_item
+	RenameId = rename_id
 
 	# --- MutableMapping Interface ---
 
@@ -1038,7 +1438,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem]):
 	def __contains__(self, item_id: object) -> bool:
 		if not isinstance(item_id, str):
 			return False
-		return self.get(item_id) is not None
+		return self.contains(item_id)
 
 	def __iter__(self) -> Iterator[str]:
 		for key in sorted(self._historic_items.keys()):

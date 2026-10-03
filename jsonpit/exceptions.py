@@ -33,3 +33,10 @@ class ProtectedAttributeError(JsonPitError, ValueError):
 
 class StrictPatchValidationError(JsonPitError, ValueError):
 	"""CR047: Raised when --require-existing / --patch validation fails."""
+
+
+class ObjectDisposedError(JsonPitError):
+	"""Raised when accessing or mutating a disposed Pit instance."""
+
+
+PitDisposedError = ObjectDisposedError

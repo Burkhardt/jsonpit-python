@@ -91,7 +91,7 @@ class PitItems(Sequence[PitItem]):
 
 	@property
 	def history(self) -> tuple[PitItem, ...]:
-		return self._history
+		return tuple(frag.clone() for frag in self._history)
 
 	@property
 	def max_count(self) -> int:
@@ -191,13 +191,14 @@ class PitItems(Sequence[PitItem]):
 	# --- Sequence Interface ---
 
 	def __getitem__(self, index: int) -> PitItem:  # type: ignore[override]
-		return self._history[index]
+		return self._history[index].clone()
 
 	def __len__(self) -> int:
 		return len(self._history)
 
 	def __iter__(self) -> Iterator[PitItem]:
-		return iter(self._history)
+		for frag in self._history:
+			yield frag.clone()
 
 	def __repr__(self) -> str:
 		return f"<PitItems Key={self._key!r} Count={len(self._history)} MaxCount={self._max_count}>"
