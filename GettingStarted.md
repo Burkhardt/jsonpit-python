@@ -23,38 +23,61 @@ It is based on `jsonpit` v4.5.1, featuring 100% lockstep parity with C# `JsonPit
 
 ---
 
-## 2. Installation in Python Environments
+## 2. Installing the `jpit` CLI Tool
 
-### Option A: In a Project Virtual Environment (`pip`)
+`jpit` is the command-line companion for `jsonpit` and the Python counterpart to C# `pits`. Choose the method that best matches your workflow:
+
+### Method 1: Single-File Direct Download (Zero Installation, Zero Dependencies)
+
+Because `jsonpit` has zero third-party dependencies, it is packaged as a single 51 KB executable using Python's standard library `zipapp`.
+
+👉 **[Download `jpit` binary directly (51 KB)](https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit)**
+
+To install it from your terminal on **any Mac or Linux machine** (runs anywhere, from any folder):
 ```bash
-# Create and activate an isolated environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install jsonpit
-pip install --upgrade jsonpit
+mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit -o ~/.local/bin/jpit && chmod +x ~/.local/bin/jpit
 ```
 
-### Option B: Using `uv`
+Verify the installation:
 ```bash
-uv add jsonpit
+jpit -v
 ```
 
-### Option C: The `jpit` CLI (User-Space, Zero External Tools)
-To provision the `jpit` CLI tool on any machine into `~/.local/bin` without touching root directories:
+### Method 2: Fleet Provisioning via `install-clis.sh` (RAIkeep Suite)
+
+If you have cloned the [RAIkeep](https://github.com/Burkhardt/RAIkeep) repository on your development machine (`Nkosikazi`), you can provision all 5 CLIs (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) across your entire fleet in a single command over SSH without logging into each machine manually:
+
 ```bash
-# From the RAIkeep repository:
-./scripts/install-clis.sh 4.5.0 local
+cd ~/Projects/GitHub/RAIkeep && ./scripts/install-clis.sh 4.5.0 all
 ```
-Or download the self-contained single-file 51 KB executable `dist/jpit` built with Python's stdlib `zipapp`:
+
+If you are already logged into a remote machine and want to run the installer without cloning the repository:
 ```bash
-cp dist/jpit ~/.local/bin/jpit
-chmod +x ~/.local/bin/jpit
+curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.0 local
 ```
 
 ---
 
-## 3. Configuration & Cloud Roots
+## 3. Installing `jsonpit` in Python Applications
+
+If you are building a Python service, backend daemon, or AI agent workflow:
+
+### Using Standard Python `pip`
+Create and activate an isolated virtual environment:
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade jsonpit
+```
+
+### Using `uv`
+```bash
+uv add jsonpit
+```
+
+---
+
+## 4. Configuration & Cloud Roots
 
 `jsonpit` automatically reads your cloud provider root from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`):
 
@@ -71,7 +94,7 @@ If no configuration file exists, you can pass explicit directory paths directly,
 
 ---
 
-## 4. First Steps with the Python Library
+## 5. First Steps with the Python Library
 
 ### Basic End-to-End Example
 Here is the recommended Python idiom using the `Pit.open()` context manager:
@@ -103,7 +126,7 @@ with Pit.open("person", cloud="GoogleDrive", read_only=True) as people:
 ```
 
 ### Updating an Existing Item
-In `jsonpit` 4.5.x, looking up an entity returns a **live reference**. Mutating that reference records sparse modifications directly:
+Looking up an entity returns a **live reference**. Mutating that reference records sparse modifications directly:
 
 ```python
 with Pit.open("person", cloud="GoogleDrive") as people:
@@ -161,15 +184,14 @@ with Pit.open("person", cloud="GoogleDrive", read_only=True) as people:
 
 ---
 
-## 5. Alternative: First Steps with the `jpit` CLI
+## 6. Alternative: First Steps with the `jpit` CLI
 
 If you prefer to operate directly from the command line without writing Python code, the `jpit` CLI provides high-performance data seeding, mutation, and inspection.
 
 ### Step 1: Seed Initial Data
-Create a JSON or JSON5 file:
+Create a JSON or JSON5 file (`people.json5`):
 
 ```json5
-// people.json5
 [
   {
     Id: "Max",
@@ -191,28 +213,35 @@ jpit seed person people.json5
 ```
 
 ### Step 2: Read Entities
+Get one entity formatted as JSON:
 ```bash
-# Get one entity as formatted JSON
 jpit get person Max
+```
 
-# Get only a specific property
+Get only a specific property:
+```bash
 jpit get person Max --property Email
+```
 
-# List all active entities in the pit
+List all active entities in the pit:
+```bash
 jpit list person
 ```
 
 ### Step 3: Sparse Mutations (Anti-Read-Modify-Write)
-Update attributes without rewriting the entity or losing concurrent edits:
+Update attributes without rewriting the entire entity:
 
 ```bash
-# Update or add an attribute
 jpit set person Max Phone "+27-82-111-2222"
+```
 
-# Add a nested object
+Add a nested object:
+```bash
 jpit set person Max Address '{"City": "Cape Town", "Country": "South Africa"}'
+```
 
-# Tombstone an attribute
+Tombstone an attribute:
+```bash
 jpit del-prop person Max Email
 ```
 
@@ -220,30 +249,33 @@ jpit del-prop person Max Email
 Search across living entity states using ripgrep-style speed:
 
 ```bash
-# Search for text across all properties
 jpit grep "Cape Town" person
+```
 
-# Filter by property and output JSON
+Filter by property and output structured JSON:
+```bash
 jpit grep --property Role "Architect" person --json
 ```
 
 ### Step 5: Exporting & Piping with `jq`
+Pipe living state directly into `jq`:
 ```bash
-# Pipe living state directly to jq
 jpit export person --jq '.[].Id'
 ```
 
 ---
 
-## 6. 100% C# / `pits` Cross-Language Interoperability
+## 7. 100% C# / `pits` Cross-Language Interoperability
 
-Every Pit created or updated by Python `jsonpit` is 100% binary- and schema-compatible with C# `JsonPit` and the `pits` CLI:
+Every Pit created or updated by Python `jsonpit` is 100% binary- and schema-compatible with C# `JsonPit` and the `pits` CLI.
 
+Write an entity attribute with Python `jpit`:
 ```bash
-# Write with Python jpit:
 jpit set person Max Status "Online"
+```
 
-# Read immediately with C# pits:
+Read it immediately with C# `pits`:
+```bash
 pits get person Max
 ```
 

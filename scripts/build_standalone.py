@@ -57,8 +57,14 @@ def build_standalone() -> Path:
 		current_mode = os.stat(OUTPUT_FILE).st_mode
 		os.chmod(OUTPUT_FILE, current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
+		# Also copy to tracked bin/jpit
+		bin_dir = ROOT_DIR / "bin"
+		bin_dir.mkdir(parents=True, exist_ok=True)
+		shutil.copy2(OUTPUT_FILE, bin_dir / "jpit")
+
 	size_kb = OUTPUT_FILE.stat().st_size / 1024.0
 	print(f"📦 Built standalone self-contained executable: {OUTPUT_FILE} ({size_kb:.1f} KB)")
+	print(f"📦 Updated tracked repository executable: {ROOT_DIR / 'bin' / 'jpit'} ({size_kb:.1f} KB)")
 	return OUTPUT_FILE
 
 
