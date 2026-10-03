@@ -1,8 +1,8 @@
-# Getting Started with Python jsonpit (v4.5.1)
+# Getting Started with Python jsonpit (v4.5.2)
 
 This guide provides a practical walkthrough for using **`jsonpit`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
 
-It is based on `jsonpit` v4.5.1, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+It is based on `jsonpit` v4.5.2, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ---
 
