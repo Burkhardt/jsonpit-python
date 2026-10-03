@@ -2,6 +2,8 @@
 Domain exceptions for the jsonpit library.
 """
 
+from __future__ import annotations
+
 
 class JsonPitError(Exception):
 	"""Base exception for all jsonpit domain errors."""

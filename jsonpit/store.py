@@ -4,6 +4,8 @@ Encapsulates directory ecosystems, context manager transactions, distributed lea
 coordination, change-file streaming, receipt-based cleanup, and Mapping protocols.
 """
 
+from __future__ import annotations
+
 import abc
 import copy
 from dataclasses import dataclass, field
@@ -913,6 +915,7 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		new_data = old_item.to_dict()
 		new_data["Id"] = new_key
 		new_data.pop("Modified", None)
+		new_data.pop("Deleted", None)
 		new_item = PitItem(new_data)
 
 		with self._locker:

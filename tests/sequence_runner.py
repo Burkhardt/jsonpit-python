@@ -105,12 +105,16 @@ class SequenceRunner:
 
 		while True:
 			step_start = time.monotonic()
+			sub_env = dict(os.environ)
+			ws_str = str(self.workspace_root)
+			sub_env["PYTHONPATH"] = ws_str + (os.pathsep + sub_env["PYTHONPATH"] if "PYTHONPATH" in sub_env else "")
 			proc = subprocess.run(
 				cmd_str,
 				shell=True,
-				cwd=str(self.workspace_root),
+				cwd=ws_str,
 				capture_output=True,
 				text=True,
+				env=sub_env,
 			)
 			step_duration = (time.monotonic() - step_start) * 1000.0
 

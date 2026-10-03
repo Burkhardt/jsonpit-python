@@ -10,10 +10,12 @@ import time
 import traceback
 from pathlib import Path
 
-# Ensure workspace root is in sys.path
+# Ensure workspace root is in sys.path and subprocess environment
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
 	sys.path.insert(0, str(PROJECT_ROOT))
+import os
+os.environ["PYTHONPATH"] = str(PROJECT_ROOT) + (os.pathsep + os.environ["PYTHONPATH"] if "PYTHONPATH" in os.environ else "")
 
 
 def run_suite() -> int:
