@@ -23,34 +23,17 @@ It is based on `jsonpit` v4.5.1, featuring 100% lockstep parity with C# `JsonPit
 
 ---
 
-## 2. Installing the `jpit` CLI Tool
+## 2. CLI Quick Setup (All 5 CLIs)
 
-`jpit` is the command-line companion for `jsonpit` and the Python counterpart to C# `pits`. Choose the method that best matches your workflow:
+To install the entire suite of CLI tools (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) directly on any machine into `~/.local/bin` without cloning any repository or requiring `sudo`:
 
-### Method 1: Single-File Direct Download (Zero Installation, Zero Dependencies)
-
-Because `jsonpit` has zero third-party dependencies, it is packaged as a single 51 KB executable using Python's standard library `zipapp`.
-
-👉 **[Download `jpit` binary directly (51 KB)](https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit)**
-
-To install it from your terminal on **any Mac or Linux machine** (runs anywhere, from any folder):
-```bash
-mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit -o ~/.local/bin/jpit && chmod +x ~/.local/bin/jpit
-```
-
-Verify the installation:
-```bash
-jpit -v
-```
-
-### Method 2: Install All 5 CLIs (`amafu`, `raid`, `iorg`, `pits`, `jpit`)
-
-To install the entire suite of CLI tools into `~/.local/bin` using the public installer script from GitHub:  
-👉 **[`install-clis.sh` on GitHub](https://github.com/Burkhardt/RAIkeep/blob/main/scripts/install-clis.sh)**
-
-Run this one-liner directly in your terminal (no repository cloning needed):
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.0 local
+```
+
+Verify your installation:
+```bash
+jpit -v
 ```
 
 ---
@@ -277,3 +260,24 @@ pits get person Max
 ```
 
 Both engines enforce identical timestamp parsing, canonical key ordering, lease flag acquisition, receipt grace periods, and sparse delta projection.
+
+---
+
+## 8. Alternative Installation & Troubleshooting
+
+### Installing only `jpit` standalone (51 KB single file)
+If you only need the `jpit` command without the .NET tools:
+
+👉 **[Download `jpit` binary directly (51 KB)](https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit)**
+
+Or run via `curl`:
+```bash
+mkdir -p ~/.local/bin && curl -fsSL https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit -o ~/.local/bin/jpit && chmod +x ~/.local/bin/jpit
+```
+
+### Shell PATH troubleshooting
+If your shell reports `command not found: jpit`, ensure that `~/.local/bin` is in your shell `PATH`:
+```bash
+echo 'export PATH="$HOME/.local/bin:$HOME/.dotnet/tools:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
