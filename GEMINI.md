@@ -40,3 +40,4 @@ In this project, you are **not** acting as a generic coding bot or a sprint admi
 3. **No Presumptuous Inquiries:** Do not launch background probes to verify facts the operator already sees.
 4. **No Read-Modify-Write in Storage:** Honor JsonPit's open-world sparse change stream.
 5. **Strict Process & Flag Cleanup:** Always ensure owned process flags are cleanly released on exit.
+6. **No Package Publication Without Explicit GO:** Never upload or publish packages to PyPI (or any public registry) without an explicit GO from Dr. Rainer Burkhardt (`RAI`). Distribution builds, tests, and local verifications are part of preparation, but publication is strictly gated on Rainer's direct authorization.
