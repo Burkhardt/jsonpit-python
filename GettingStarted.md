@@ -1,8 +1,8 @@
-# Getting Started with Python jsonpit (v4.5.3)
+# Getting Started with Python jsonpit (v4.5.4)
 
 This guide provides a practical walkthrough for using **`jsonpit`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
 
-It is based on `jsonpit` v4.5.3, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+It is based on `jsonpit` v4.5.4, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ---
 
@@ -28,7 +28,7 @@ It is based on `jsonpit` v4.5.3, featuring 100% lockstep parity with C# `JsonPit
 To install the entire suite of CLI tools (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) directly on any machine into `~/.local/bin` without cloning any repository or requiring `sudo`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.3 local
+curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.4 local
 ```
 
 Verify your installation:
@@ -61,7 +61,7 @@ uv add jsonpit
 
 `jsonpit` automatically reads your cloud provider roots from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`).
 
-### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu) (v4.5.3)
+### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu) (v4.5.4)
 
 On macOS and Linux, enable your cloud clients (iCloud, OneDrive, Google Drive, Dropbox), then use [`amafu`](https://www.nuget.org/packages/Amafu) to auto-detect your local sync folders and create clean, unified shortcuts in `~/.CloudStorage/`:
 
