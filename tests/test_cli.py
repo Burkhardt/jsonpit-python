@@ -278,6 +278,44 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		assert "#3---retain-window-compatibility-exception" in rw_out
 
 
+def test_general_help_shows_wwwa_pit_status_only_when_explicit_or_contextual() -> None:
+	from jsonpit.icons import Icons
+
+	with tempfile.TemporaryDirectory() as tmp_dir:
+		root = Path(tmp_dir)
+		weather = root / "Weather"
+		weather.mkdir()
+
+		bare = io.StringIO()
+		with contextlib.redirect_stdout(bare):
+			assert main(["--help", "-n"]) == 0
+		assert all(f"{name}.pit" not in bare.getvalue() for name in ("Person", "Object", "Place", "Activity"))
+
+		weather_help = io.StringIO()
+		with contextlib.redirect_stdout(weather_help):
+			assert main(["--help", "-r", str(weather), "-n"]) == 0
+		assert "Person.pit" not in weather_help.getvalue()
+
+		person_dir = root / "Person"
+		person_dir.mkdir()
+		person_file = person_dir / "Person.pit"
+		person_file.write_text("{}", encoding="utf-8")
+
+		contextual = io.StringIO()
+		with contextlib.redirect_stdout(contextual):
+			assert main(["--help", "-r", str(root), "-n"]) == 0
+		assert f"{Icons.INFO} Person\t{Icons.SUCCESS}\t{person_file}" in contextual.getvalue()
+		assert f"{Icons.INFO} Activity\t{Icons.NOT_AVAILABLE}" in contextual.getvalue()
+
+		explicit = io.StringIO()
+		with contextlib.redirect_stdout(explicit):
+			assert main(["--help", "--wwwa", "-n"]) == 0
+		assert f"{Icons.INFO} Person\t{Icons.NOT_AVAILABLE}\tPerson.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Object\t{Icons.NOT_AVAILABLE}\tObject.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Place\t\t{Icons.NOT_AVAILABLE}\tPlace.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Activity\t{Icons.NOT_AVAILABLE}\tActivity.pit" in explicit.getvalue()
+
+
 def test_discovery_output_uses_trailing_directory_separator() -> None:
 	directory = Path("/tmp/diagram-fixture")
 	output = _render_discovery("ParityCloud", directory, ["Activity"], all_clouds=True)

@@ -1129,6 +1129,7 @@ def print_top_help(
 	use_color: bool = True,
 	root: str | None = None,
 	cloud: str | None = None,
+	wwwa: bool = False,
 ) -> None:
 	"""Prints the branded jpit help screen with Nerd Font glyphs and multi-token ANSI accents."""
 	if not nologo:
@@ -1203,6 +1204,40 @@ def print_top_help(
 	else:
 		hint = "specify -r <root> (e.g. -r AIA) to discover pits"
 		sys.stdout.write(f"{pits_title}\t{i_folder}\t{hint}\n")
+
+	if wwwa or _has_wwwa_pit(root, cloud):
+		for name in WWWA_PITS:
+			separator = "\t\t" if name == "Place" else "\t"
+			status, path = _wwwa_pit_status(name, root, cloud)
+			sys.stdout.write(f"{Icons.INFO} {name}{separator}{status}\t{path}\n")
+
+
+def _wwwa_roots(root: str | None, cloud: str | None) -> list[Path]:
+	"""Returns resolved help roots without making a cloud selection implicit."""
+	if not root:
+		return []
+	try:
+		return [directory for _, directory, _ in _discover_tenant_roots(root, cloud, all_clouds=False)]
+	except Exception:
+		return []
+
+
+def _has_wwwa_pit(root: str | None, cloud: str | None) -> bool:
+	return any(
+		(directory / name / f"{name}.pit").is_file()
+		for directory in _wwwa_roots(root, cloud)
+		for name in WWWA_PITS
+	)
+
+
+def _wwwa_pit_status(name: str, root: str | None, cloud: str | None) -> tuple[str, str]:
+	"""Matches pits' WWWA help line: status glyph plus its resolved Pit file path."""
+	roots = _wwwa_roots(root, cloud)
+	if not roots:
+		return Icons.NOT_AVAILABLE, f"{name}.pit"
+
+	pit_file = roots[0] / name / f"{name}.pit"
+	return (Icons.SUCCESS if pit_file.is_file() else Icons.NOT_AVAILABLE), str(pit_file)
 
 
 def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -> None:
@@ -1670,6 +1705,7 @@ def main(argv: list[str] | None = None) -> int:
 	use_color = should_color()
 	nologo = "-n" in argv or "--nologo" in argv
 	cloud, root = extract_cloud_and_root(argv)
+	wwwa = "--wwwa" in argv
 
 	known_subcommands = {
 		"grep", "get", "history", "list", "ls", "put", "seed", "set", "del",
@@ -1679,7 +1715,7 @@ def main(argv: list[str] | None = None) -> int:
 
 	# Quick check for top-level help or no arguments
 	if len(argv) == 0 or (len(argv) == 1 and argv[0] in ("-h", "--help")):
-		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud)
+		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud, wwwa=wwwa)
 		return 0
 
 	# Check for command-specific or option-specific help: e.g. jpit --retain-window -h or jpit grep -h
@@ -1692,7 +1728,7 @@ def main(argv: list[str] | None = None) -> int:
 		if target_cmd:
 			print_command_help(target_cmd, nologo=nologo, use_color=use_color)
 			return 0
-		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud)
+		print_top_help(nologo=nologo, use_color=use_color, root=root, cloud=cloud, wwwa=wwwa)
 		return 0
 
 	parser = build_parser()
