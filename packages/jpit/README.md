@@ -1,4 +1,4 @@
-# jpit (v4.5.4)
+# jpit (v4.5.5)
 
 > **The developer and AI agent companion CLI for [jsonpit](https://pypi.org/project/jsonpit/) — daemon-free distributed storage over Cloud Drives.**  
 > *100% lockstep parity with C# JsonPit in [RAIkeep](https://github.com/Burkhardt/RAIkeep).*
@@ -16,7 +16,7 @@ Install `jpit` in an isolated environment without dependency conflicts across yo
 # Install jpit globally
 pipx install jpit
 
-# Upgrade to latest lockstep release (v4.5.4)
+# Upgrade to latest lockstep release (v4.5.5)
 pipx upgrade jpit
 ```
 
@@ -104,4 +104,3 @@ jpit audit --wwwa -c OneDrive -r AIA --json
 
 For complete Python library documentation, distributed lease protocols, and multi-agent coordination architecture, visit:  
 👉 **[jsonpit on GitHub](https://github.com/Burkhardt/jsonpit-python)** · **[API Reference (API.md)](https://github.com/Burkhardt/jsonpit-python/blob/main/API.md)** · **[jsonpit on PyPI](https://pypi.org/project/jsonpit/)**
-

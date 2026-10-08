@@ -1,4 +1,4 @@
-# jsonpit API Reference (v4.5.4)
+# jsonpit API Reference (v4.5.5)
 
 This document provides a foldable, searchable reference for the public `jsonpit` Python API. Designed for 100% C# JsonPit parity, zero third-party runtime dependencies, and Smalltalk-grade object-oriented architecture.
 

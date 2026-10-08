@@ -359,6 +359,12 @@ def _format_pit_listing(directory: Path, name: str, long_listing: bool) -> str:
 	return f"  {name:<12}  {size:>9}   {modified}"
 
 
+def _format_discovery_directory(directory: Path) -> str:
+	"""Matches pits' RaiPath display form, including its terminal separator."""
+	text = str(directory)
+	return text if text.endswith(os.sep) else text + os.sep
+
+
 def _render_discovery(
 	provider: str | None,
 	directory: Path,
@@ -366,12 +372,13 @@ def _render_discovery(
 	all_clouds: bool,
 	long_listing: bool = False,
 ) -> str:
+	display_directory = _format_discovery_directory(directory)
 	if all_clouds:
 		if not pits:
-			return f"[{provider}] ({directory}): No pits found."
-		heading = f"[{provider}] ({directory}): {len(pits)} pit(s) found"
+			return f"[{provider}] ({display_directory}): No pits found."
+		heading = f"[{provider}] ({display_directory}): {len(pits)} pit(s) found"
 	else:
-		heading = f"Found {len(pits)} pit(s) in cloud '{provider}' ({directory}):"
+		heading = f"Found {len(pits)} pit(s) in cloud '{provider}' ({display_directory}):"
 	return "\n".join([heading, *[_format_pit_listing(directory, name, long_listing) for name in pits]])
 
 
@@ -442,7 +449,7 @@ def cmd_list_discovery(args: argparse.Namespace) -> int:
 
 	provider, directory, pits = discoveries[0]
 	if provider is None:
-		sys.stdout.write(f"Found {len(pits)} pit(s) in local directory '{directory}':\n")
+		sys.stdout.write(f"Found {len(pits)} pit(s) in local directory '{_format_discovery_directory(directory)}':\n")
 		for name in pits:
 			sys.stdout.write(_format_pit_listing(directory, name, long_listing) + "\n")
 		return 0

@@ -12,7 +12,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from jsonpit.cli import main
+from jsonpit.cli import _render_discovery, main
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "Person.pit"
 
@@ -238,6 +238,7 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		# 4. Test jpit -r <root> -h dynamic help line with positional colors
 		f_out_help = io.StringIO()
 		old_term = os.environ.get("TERM")
+		old_no_color = os.environ.pop("NO_COLOR", None)
 		try:
 			os.environ["TERM"] = "xterm-256color"
 			with contextlib.redirect_stdout(f_out_help):
@@ -247,6 +248,8 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 				os.environ.pop("TERM", None)
 			else:
 				os.environ["TERM"] = old_term
+			if old_no_color is not None:
+				os.environ["NO_COLOR"] = old_no_color
 
 		assert code == 0
 		help_out = f_out_help.getvalue()
@@ -274,3 +277,8 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		assert "#L45" in rw_out
 		assert "#3---retain-window-compatibility-exception" in rw_out
 
+
+def test_discovery_output_uses_trailing_directory_separator() -> None:
+	directory = Path("/tmp/diagram-fixture")
+	output = _render_discovery("ParityCloud", directory, ["Activity"], all_clouds=True)
+	assert output == "[ParityCloud] (/tmp/diagram-fixture/): 1 pit(s) found\n  Activity"
