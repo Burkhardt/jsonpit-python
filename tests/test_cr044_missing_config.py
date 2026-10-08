@@ -62,7 +62,7 @@ def test_missing_config_directs_operator_to_amafu() -> None:
 			commands = [
 				["get", "Person", "Item1", "-n"],
 				["list", "Person", "-n"],
-				["pits", "-r", "AIA", "-n"],
+				["list", "-r", "AIA", "-n"],
 				["grep", "test", "Person", "-n"],
 			]
 
@@ -158,4 +158,3 @@ def test_cr051_shortcut_and_symlink_cloud_path_classification() -> None:
 		assert config_b.is_cloud_path(outside) is False
 	finally:
 		shutil.rmtree(temp_dir, ignore_errors=True)
-

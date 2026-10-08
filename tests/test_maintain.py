@@ -306,3 +306,72 @@ def test_maintain_cli_json_schema() -> None:
 		}
 		for key in expected_keys:
 			assert key in data, f"Key '{key}' missing from maintain JSON output"
+
+
+def test_maintain_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
+	"""
+	Regression test: when running `jpit maintain --wwwa -c <cloud> -r AIA`,
+	if an eponymous folder `./AIA` exists in the current working directory,
+	the maintain target MUST resolve against the cloud root, not the local cwd folder.
+	"""
+	with tempfile.TemporaryDirectory() as tmp_cloud, tempfile.TemporaryDirectory() as tmp_cwd:
+		# 1. Setup cloud storage with WWWA pits under AIA/
+		cloud_root = Path(tmp_cloud) / "CloudData"
+		cloud_root.mkdir(parents=True)
+		tenant_cloud = cloud_root / "AIA"
+		for pit_name in ["Activity", "Image", "Object", "Person", "Place"]:
+			p_dir = tenant_cloud / pit_name
+			p_dir.mkdir(parents=True)
+			(p_dir / f"{pit_name}.pit").write_text("[]\n", encoding="utf-8")
+
+		# 2. Setup a dummy local ./AIA directory in cwd (without .pit files)
+		local_aia = Path(tmp_cwd) / "AIA"
+		local_aia.mkdir(parents=True)
+
+		# 3. Configure mock OsConfig with our cloud_root
+		import os
+		from jsonpit.config import OsConfig
+		mock_cfg = OsConfig({"Cloud": {"MockDrive": str(cloud_root)}})
+		OsConfig._instance = mock_cfg
+
+		orig_cwd = os.getcwd()
+		try:
+			os.chdir(tmp_cwd)
+			args = argparse.Namespace(
+				pit=None,
+				apply=False,
+				prune_process_flags=False,
+				older_than=None,
+				repair_legacy_extensions=False,
+				archive_events=False,
+				json=True,
+				wwwa=True,
+				cloud="MockDrive",
+				root="AIA",
+			)
+
+			import io
+			import sys
+
+			buf = io.StringIO()
+			err_buf = io.StringIO()
+			old_stdout = sys.stdout
+			old_stderr = sys.stderr
+			try:
+				sys.stdout = buf
+				sys.stderr = err_buf
+				rc = cmd_maintain(args)
+			finally:
+				sys.stdout = old_stdout
+				sys.stderr = old_stderr
+
+			assert rc == 0, f"Expected cmd_maintain to succeed, got rc={rc}, err={err_buf.getvalue()}"
+			data = json.loads(buf.getvalue())
+			assert isinstance(data, list)
+			assert len(data) == 4
+			for item in data:
+				assert str(cloud_root) in item["PitFile"]
+				assert str(local_aia) not in item["PitFile"]
+		finally:
+			os.chdir(orig_cwd)
+			OsConfig.reset()

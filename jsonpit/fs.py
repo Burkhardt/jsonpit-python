@@ -73,6 +73,50 @@ def resolve_pit_target(
 	return target_dir, pit_name
 
 
+def resolve_command_pit_root(
+	root: str | None = None,
+	cloud: str | None = None,
+	target_name: str = "WWWA",
+	operation: str = "maintenance",
+	config: OsConfig | None = None,
+) -> Path:
+	"""
+	Resolves a tenant pit root directory adhering to 100% C# pits CLI parity:
+	- If an explicit filesystem path is provided (e.g. starting with /, ~, .), resolves directly.
+	- If cloud is provided: resolves cloud root via OsConfig and appends relative root.
+	  Crucially, does NOT treat relative root strings as local filesystem directories.
+	- If cloud is not provided and root is provided: resolves root directly.
+	- If neither is provided: raises PitNotFoundError.
+	"""
+	raw_root = str(root).strip() if root else ""
+	is_explicit = (
+		isinstance(root, Path)
+		or raw_root.startswith(("/", "~", ".", "\\"))
+		or ("/" in raw_root and not raw_root.startswith("-"))
+		or ("\\" in raw_root)
+	)
+	if is_explicit:
+		return Path(os.path.abspath(os.path.expanduser(raw_root)))
+
+	cfg = config or OsConfig.load()
+	if cloud:
+		if not cfg.is_config_loaded:
+			raise PitNotFoundError(missing_configuration_diagnostic())
+		cloud_root = cfg.get_cloud_root(cloud)
+		if not cloud_root or not cloud_root.is_dir():
+			raise PitNotFoundError(
+				f"The requested cloud provider '{cloud}' is missing or empty in {DEFAULT_CONFIG_FILE_LOCATION}."
+			)
+		return cloud_root / raw_root.strip("/\\") if raw_root else cloud_root
+
+	if raw_root:
+		return Path(os.path.abspath(os.path.expanduser(raw_root)))
+
+	raise PitNotFoundError(
+		f"Cannot resolve {operation} target '{target_name}' without -r or --pitroot, or a configured -c or --cloud provider."
+	)
+
+
 def ensure_directory(path: Path | str) -> Path:
 	"""Ensures the directory exists, creating intermediate parents if needed."""
 	p = Path(path)

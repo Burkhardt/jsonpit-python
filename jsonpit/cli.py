@@ -27,7 +27,7 @@ from .exceptions import (
 	ProtectedAttributeError,
 	StrictPatchValidationError,
 )
-from .fs import resolve_pit_target
+from .fs import resolve_command_pit_root, resolve_pit_target
 from .icons import Icons
 from .store import (
 	Pit,
@@ -59,7 +59,7 @@ def run_jq_filter(json_text: str, jq_filter: str) -> None:
 
 def discover_pits(
 	target: str,
-	cloud: str | None = "OneDrive",
+	cloud: str | None = None,
 	root: str | None = None,
 ) -> list[tuple[Path, str]]:
 	"""
@@ -133,38 +133,9 @@ def discover_pits(
 	return []
 
 
-def discover_root_pits(root: str | None, cloud: str | None = "OneDrive") -> list[str]:
-	"""Discovers all pit names under a resolved tenant root directory."""
-	if not root:
-		return []
-	raw_str = str(root).strip()
-	p = Path(os.path.expanduser(raw_str))
-	if p.is_dir():
-		candidate: Path | None = p
-	else:
-		cfg = OsConfig.load()
-		if not cfg.is_config_loaded:
-			raise PitNotFoundError(missing_configuration_diagnostic())
-		cloud_root = cfg.get_cloud_root(cloud or "OneDrive")
-		candidate = cloud_root / root if cloud_root else None
-
-	if not candidate or not candidate.is_dir():
-		return []
-
-	found: list[str] = []
-	for child in sorted(candidate.iterdir()):
-		if child.is_dir():
-			pit_file = child / f"{child.name}.pit"
-			if pit_file.is_file():
-				found.append(child.name)
-		elif child.suffix.lower() == ".pit":
-			found.append(child.stem)
-	return sorted(list(dict.fromkeys(found)))
-
-
-def extract_cloud_and_root(argv: list[str]) -> tuple[str, str | None]:
+def extract_cloud_and_root(argv: list[str]) -> tuple[str | None, str | None]:
 	"""Extracts -c/--cloud and -r/--root options from CLI token list."""
-	cloud = "OneDrive"
+	cloud: str | None = None
 	root = None
 	i = 0
 	while i < len(argv):
@@ -184,6 +155,19 @@ def extract_cloud_and_root(argv: list[str]) -> tuple[str, str | None]:
 		else:
 			i += 1
 	return cloud, root
+
+
+def expand_list_flag_bundles(argv: list[str]) -> list[str]:
+	"""Expands the supported POSIX list bundles without changing other commands."""
+	if not any(argument in ("list", "ls") for argument in argv):
+		return argv
+	expanded: list[str] = []
+	for argument in argv:
+		if argument in ("-la", "-al"):
+			expanded.extend(["-l", "-a"])
+		else:
+			expanded.append(argument)
+	return expanded
 
 
 def cmd_grep(args: argparse.Namespace) -> int:
@@ -342,34 +326,137 @@ def cmd_history(args: argparse.Namespace) -> int:
 	return 0
 
 
-def cmd_pits(args: argparse.Namespace) -> int:
-	"""Discovers and lists available pits under the tenant root (-r is required)."""
-	use_color = should_color()
-	root = getattr(args, "root", None)
-	cloud = getattr(args, "cloud", "OneDrive")
-	if not root:
-		err_content = color(f"{Icons.ERROR} error: -r/--root is required to list pits (e.g. -r AIA)", C_BOLD + C_RED, use_color)
-		sys.stderr.write(f"jpit pits: {err_content}\n")
-		return 1
+def _is_explicit_local_directory(value: str) -> bool:
+	"""Returns whether value identifies a local filesystem path rather than a tenant name."""
+	return (
+		value.startswith(("/", "~", ".", "\\"))
+		or "/" in value
+		or "\\" in value
+		or Path(os.path.expanduser(value)).is_dir()
+	)
 
-	pits = discover_root_pits(root, cloud)
+
+def _discover_pit_names(directory: Path) -> list[str]:
+	if not directory.is_dir():
+		return []
+	return sorted({
+		child.name
+		for child in directory.iterdir()
+		if child.is_dir() and (child / f"{child.name}.pit").is_file()
+	} | {
+		file.stem for file in directory.glob("*.pit") if file.is_file()
+	})
+
+
+def _format_pit_listing(directory: Path, name: str, long_listing: bool) -> str:
+	if not long_listing:
+		return f"  {name}"
+	nested = directory / name / f"{name}.pit"
+	flat = directory / f"{name}.pit"
+	metadata = (nested if nested.is_file() else flat).stat()
+	size = f"{metadata.st_size / 1024:.1f} KB"
+	modified = datetime.datetime.fromtimestamp(metadata.st_mtime).strftime("%Y-%m-%d %H:%M")
+	return f"  {name:<12}  {size:>9}   {modified}"
+
+
+def _render_discovery(
+	provider: str | None,
+	directory: Path,
+	pits: list[str],
+	all_clouds: bool,
+	long_listing: bool = False,
+) -> str:
+	if all_clouds:
+		if not pits:
+			return f"[{provider}] ({directory}): No pits found."
+		heading = f"[{provider}] ({directory}): {len(pits)} pit(s) found"
+	else:
+		heading = f"Found {len(pits)} pit(s) in cloud '{provider}' ({directory}):"
+	return "\n".join([heading, *[_format_pit_listing(directory, name, long_listing) for name in pits]])
+
+
+def _discover_tenant_roots(root: str, cloud: str | None, all_clouds: bool) -> list[tuple[str | None, Path, list[str]]]:
+	"""Discovers a local root or configured cloud tenant roots without guessing a provider."""
+	if cloud:
+		candidate = resolve_command_pit_root(root=root, cloud=cloud, target_name=root, operation="list")
+		return [(cloud, candidate, _discover_pit_names(candidate))]
+	if _is_explicit_local_directory(root):
+		candidate = Path(os.path.abspath(os.path.expanduser(root)))
+		return [(None, candidate, _discover_pit_names(candidate))]
+
+	cfg = OsConfig.load()
+	if not cfg.is_config_loaded:
+		raise PitNotFoundError(missing_configuration_diagnostic())
+	providers = [provider for provider in cfg.default_cloud_order if cfg.get_cloud_root(provider) is not None]
+	if not providers:
+		raise PitNotFoundError("No configured DefaultCloudOrder providers are available for tenant discovery.")
+	discoveries = [
+		(provider, cfg.get_cloud_root(provider) / root, _discover_pit_names(cfg.get_cloud_root(provider) / root))
+		for provider in providers
+	]
+	if all_clouds:
+		return discoveries
+	return [next((discovery for discovery in discoveries if discovery[2]), discoveries[0])]
+
+
+def _require_explicit_mutation_location(args: argparse.Namespace) -> None:
+	"""Prevents mutations from silently selecting a provider from DefaultCloudOrder."""
+	if getattr(args, "cloud", None):
+		return
+	root = getattr(args, "root", None)
+	if root and _is_explicit_local_directory(root):
+		return
+	pit = getattr(args, "pit", None)
+	if pit and _is_explicit_local_directory(str(pit)):
+		return
+	label = root or pit or "the requested Pit"
+	raise JsonPitError(
+		f"Mutation refuses to guess a cloud for '{label}'. Supply -c <provider> or an explicit local directory path."
+	)
+
+
+def cmd_list_discovery(args: argparse.Namespace) -> int:
+	"""Lists tenant pits with mandatory cloud and directory provenance."""
+	root = getattr(args, "root", None)
+	cloud = getattr(args, "cloud", None)
+	all_clouds = bool(getattr(args, "all", False))
+	long_listing = bool(getattr(args, "long", False))
+	if not root:
+		raise JsonPitError("list requires -r or --root <tenant-or-path>.")
+	if all_clouds and cloud:
+		raise JsonPitError("--all scans DefaultCloudOrder and cannot be combined with -c or --cloud.")
+
+	discoveries = _discover_tenant_roots(root, cloud, all_clouds)
 	if getattr(args, "json", False):
-		sys.stdout.write(json.dumps(pits, indent=2) + "\n")
+		payload = [
+			{"cloud": provider, "path": str(directory), "pits": pits}
+			for provider, directory, pits in discoveries
+		]
+		sys.stdout.write(json.dumps(payload, indent=2) + "\n")
 		return 0
 
-	if not pits:
-		sys.stderr.write(f"No pits found under tenant root '{root}'.\n")
-		return 1
+	if all_clouds:
+		for provider, directory, pits in discoveries:
+			sys.stdout.write(_render_discovery(provider, directory, pits, all_clouds=True, long_listing=long_listing) + "\n")
+		return 0
 
-	for p in pits:
-		sys.stdout.write(f"{p}\n")
+	provider, directory, pits = discoveries[0]
+	if provider is None:
+		sys.stdout.write(f"Found {len(pits)} pit(s) in local directory '{directory}':\n")
+		for name in pits:
+			sys.stdout.write(_format_pit_listing(directory, name, long_listing) + "\n")
+		return 0
+	if not pits and cloud is None:
+		sys.stdout.write(f"No pits found under tenant root '{root}' across configured clouds.\n")
+		return 0
+	sys.stdout.write(_render_discovery(provider, directory, pits, all_clouds=False, long_listing=long_listing) + "\n")
 	return 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
 	"""Lists active entities in a Pit, or available pits if <pit> is omitted."""
 	if not getattr(args, "pit", None):
-		return cmd_pits(args)
+		return cmd_list_discovery(args)
 
 	with Pit.open(
 		args.pit,
@@ -836,21 +923,11 @@ def cmd_maintain(args: argparse.Namespace) -> int:
 	targets: list[tuple[Path, Path, str]] = []
 
 	if wwwa:
-		base_dir: Path | None = None
-		if root:
-			r_path = Path(os.path.expanduser(root))
-			if r_path.is_dir():
-				base_dir = r_path
-		if base_dir is None:
-			cfg = OsConfig.load()
-			if not cfg.is_config_loaded:
-				sys.stderr.write(f"[jpit] Error: {missing_configuration_diagnostic()}\n")
-				return 1
-			cloud_root = cfg.get_cloud_root(cloud)
-			if not cloud_root or not cloud_root.is_dir():
-				sys.stderr.write(f"[jpit] Error: Cloud provider '{cloud}' root directory not found.\n")
-				return 1
-			base_dir = cloud_root / root.strip("/\\") if root else cloud_root
+		try:
+			base_dir = resolve_command_pit_root(root=root, cloud=cloud, target_name="WWWA", operation="maintenance")
+		except Exception as ex:
+			sys.stderr.write(f"[jpit] Error: {ex}\n")
+			return 1
 
 		if not base_dir.is_dir():
 			sys.stderr.write(f"[jpit] Error: The maintenance root does not exist: {base_dir}\n")
@@ -952,21 +1029,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
 	directories: list[Path] = []
 
 	if wwwa:
-		base_dir: Path | None = None
-		if root:
-			r_path = Path(os.path.expanduser(root))
-			if r_path.is_dir():
-				base_dir = r_path
-		if base_dir is None:
-			cfg = OsConfig.load()
-			if not cfg.is_config_loaded:
-				sys.stderr.write(f"[jpit] Error: {missing_configuration_diagnostic()}\n")
-				return 1
-			cloud_root = cfg.get_cloud_root(cloud)
-			if not cloud_root or not cloud_root.is_dir():
-				sys.stderr.write(f"[jpit] Error: Cloud provider '{cloud}' root directory not found.\n")
-				return 1
-			base_dir = cloud_root / root.strip("/\\") if root else cloud_root
+		try:
+			base_dir = resolve_command_pit_root(root=root, cloud=cloud, target_name="WWWA", operation="audit")
+		except Exception as ex:
+			sys.stderr.write(f"[jpit] Error: {ex}\n")
+			return 1
 
 		for name in WWWA_PITS:
 			directories.append(base_dir / name)
@@ -1033,8 +1100,7 @@ def get_cloud_options_description(use_color: bool = True) -> str:
 		glyph = Icons.cloud_provider_icon(name, idx + 1)
 		badge_color = OPTION_BADGE_COLORS[idx % len(OPTION_BADGE_COLORS)]
 		badge = color(glyph, badge_color, use_color)
-		default_str = " (default)" if idx == 0 else ""
-		formatted.append(f"{badge} {name}{default_str}")
+		formatted.append(f"{badge} {name}")
 
 	return ", ".join(formatted)
 
@@ -1055,7 +1121,7 @@ def print_top_help(
 	nologo: bool = False,
 	use_color: bool = True,
 	root: str | None = None,
-	cloud: str | None = "OneDrive",
+	cloud: str | None = None,
 ) -> None:
 	"""Prints the branded jpit help screen with Nerd Font glyphs and multi-token ANSI accents."""
 	if not nologo:
@@ -1067,14 +1133,14 @@ def print_top_help(
 	i_folder = color(Icons.FOLDER, C_YELLOW, use_color)
 	i_banner = color(Icons.BANNER, C_CYAN, use_color)
 
-	cmd_list = "grep, get, history, list, put, set, del, del-prop, rename, export, status, pits, maintain, audit"
+	cmd_list = "grep, get, history, list (ls), put, set, del, del-prop, rename, export, status, maintain, audit"
 	sys.stdout.write(f"{c_cmd}\t{i_info}\t{cmd_list}\n")
 
 	commands_spec = [
 		("grep", "<pattern> [<target>] [-i] [-e] [-p <prop>] [--at <ts>] [--json] [--jq <expr>]"),
 		("get", "<PitName> <ItemId> [--at <ts>] [--jq <expr>] [--with-deleted]"),
 		("history", "<PitName> <ItemId> [--jq <expr>]"),
-		("list", "[<PitName>] [--json] [--jq <expr>] (lists pits if <PitName> omitted)"),
+		("list", "[<PitName>] [-r <tenant|path>] [-c <cloud>] [-a|--all] [-l|--long] [--json]"),
 		("put", "<PitName> [<source>] [-s <source>] (alias: seed)"),
 		("set", "<PitName> <ItemId> <payload>"),
 		("del", "<PitName> <ItemId> [--by <author>]"),
@@ -1082,7 +1148,6 @@ def print_top_help(
 		("rename", "<PitName> <OldId> <NewId> [--by <author>]"),
 		("export", "<PitName> [--out <file>] [--at <ts>] [--jq <expr>]"),
 		("status", "<PitName>"),
-		("pits", "[-r <root>] [-c <cloud>] [--json] (discover available pits)"),
 		("maintain", "(<PitName> | --wwwa) [--apply] [--prune-process-flags --older-than <dur>] [--json]"),
 		("audit", "(<PitName> | --wwwa) [--machine <all|local|name>] [--level <severity>] [--json]"),
 	]
@@ -1114,7 +1179,7 @@ def print_top_help(
 	pits_title = color(f"{Icons.INFO} PitNames", C_CYAN, use_color)
 	if root:
 		try:
-			discovered = discover_root_pits(root, cloud)
+			discovered = _discover_tenant_roots(root, cloud, all_clouds=False)[0][2]
 		except Exception:
 			discovered = []
 		if discovered:
@@ -1197,14 +1262,6 @@ def print_command_help(cmd: str, nologo: bool = False, use_color: bool = True) -
 			"opts": [
 				("--json", "Output JSON array"),
 				("--jq <expr>", "Convenience pipe through jq filter"),
-			],
-		},
-		"pits": {
-			"usage": "jpit pits [-r <root>] [-c <cloud>] [--json]",
-			"desc": "Discover available pits under a tenant root (-r is required).",
-			"args": [],
-			"opts": [
-				("--json", "Output JSON array of pit names"),
 			],
 		},
 		"put": {
@@ -1492,14 +1549,12 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 	p_hist.add_argument("--jq", help="Convenience pipe through jq filter")
 
 	# list
-	p_list = subparsers.add_parser("list", parents=[common_parser], help="List active entities in a Pit (or available pits if <pit> omitted)")
+	p_list = subparsers.add_parser("list", aliases=["ls"], parents=[common_parser], help="List active entities or discover tenant pits")
 	p_list.add_argument("pit", nargs="?", default=None, help="Pit name (optional: if omitted, lists available pits in -r root)")
 	p_list.add_argument("--json", action="store_true", help="Output JSON array")
 	p_list.add_argument("--jq", help="Convenience pipe through jq filter")
-
-	# pits
-	p_pits = subparsers.add_parser("pits", parents=[common_parser], help="Discover available pits under a tenant root (-r is required)")
-	p_pits.add_argument("--json", action="store_true", help="Output JSON array of pit names")
+	p_list.add_argument("-a", "--all", action="store_true", help="Discover the tenant in every DefaultCloudOrder provider")
+	p_list.add_argument("-l", "--long", action="store_true", help="Include each pit file's size and last modification time")
 
 	# put / seed
 	p_put = subparsers.add_parser(
@@ -1603,15 +1658,16 @@ def build_parser(prog: str | None = None) -> JsonPitArgumentParser:
 def main(argv: list[str] | None = None) -> int:
 	if argv is None:
 		argv = sys.argv[1:]
+	argv = expand_list_flag_bundles(argv)
 
 	use_color = should_color()
 	nologo = "-n" in argv or "--nologo" in argv
 	cloud, root = extract_cloud_and_root(argv)
 
 	known_subcommands = {
-		"grep", "get", "history", "list", "put", "seed", "set", "del",
+		"grep", "get", "history", "list", "ls", "put", "seed", "set", "del",
 		"delete", "delete-item", "del-prop", "delete-property",
-		"rename", "export", "status", "pits", "maintain", "audit",
+		"rename", "export", "status", "maintain", "audit",
 	}
 
 	# Quick check for top-level help or no arguments
@@ -1636,7 +1692,7 @@ def main(argv: list[str] | None = None) -> int:
 	args = parser.parse_args(argv)
 
 	if not hasattr(args, "cloud"):
-		args.cloud = "OneDrive"
+		args.cloud = None
 	if not hasattr(args, "root"):
 		args.root = None
 
@@ -1645,7 +1701,7 @@ def main(argv: list[str] | None = None) -> int:
 		"get": cmd_get,
 		"history": cmd_history,
 		"list": cmd_list,
-		"pits": cmd_pits,
+		"ls": cmd_list,
 		"put": cmd_put,
 		"seed": cmd_put,
 		"set": cmd_set,
@@ -1667,6 +1723,9 @@ def main(argv: list[str] | None = None) -> int:
 		return 1
 
 	try:
+		mutating_commands = {"put", "seed", "set", "del", "delete", "delete-item", "del-prop", "delete-property", "rename"}
+		if args.command in mutating_commands or (args.command == "maintain" and args.apply):
+			_require_explicit_mutation_location(args)
 		return cmd_func(args)
 	except JsonPitError as ex:
 		err_icon = color(Icons.ERROR, C_BOLD + C_RED, use_color)
@@ -1682,5 +1741,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
 	sys.exit(main())
-
-

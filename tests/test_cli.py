@@ -192,7 +192,7 @@ def test_disallow_manual_modified_or_deleted(capsys: Any = None) -> None:
 		assert "Cannot tombstone protected attribute 'Deleted'" in f_err3.getvalue()
 
 
-def test_cli_pits_discovery_and_delegation() -> None:
+def test_cli_list_discovery_and_ls_alias() -> None:
 	with tempfile.TemporaryDirectory() as tmp_dir:
 		root = Path(tmp_dir)
 		# Create four mock pits to test positional color sequence
@@ -205,10 +205,10 @@ def test_cli_pits_discovery_and_delegation() -> None:
 		(root / "PitDelta").mkdir()
 		(root / "PitDelta" / "PitDelta.pit").write_text("{}", encoding="utf-8")
 
-		# 1. Test jpit pits -r <root>
+		# 1. Test jpit list -r <root>
 		f_out = io.StringIO()
 		with contextlib.redirect_stdout(f_out):
-			code = main(["pits", "-r", str(root)])
+			code = main(["list", "-r", str(root)])
 		assert code == 0
 		out = f_out.getvalue()
 		assert "PitAlpha" in out
@@ -216,13 +216,17 @@ def test_cli_pits_discovery_and_delegation() -> None:
 		assert "PitGamma" in out
 		assert "PitDelta" in out
 
-		# 2. Test jpit pits -r <root> --json
+		# 2. Test jpit ls -r <root> --json
 		f_out_json = io.StringIO()
 		with contextlib.redirect_stdout(f_out_json):
-			code = main(["pits", "-r", str(root), "--json"])
+			code = main(["ls", "-r", str(root), "--json"])
 		assert code == 0
 		data = json.loads(f_out_json.getvalue())
-		assert data == ["PitAlpha", "PitBeta", "PitDelta", "PitGamma"]
+		assert data == [{
+			"cloud": None,
+			"path": str(root),
+			"pits": ["PitAlpha", "PitBeta", "PitDelta", "PitGamma"],
+		}]
 
 		# 3. Test jpit list -r <root> delegation
 		f_out_list = io.StringIO()
@@ -269,5 +273,4 @@ def test_cli_pits_discovery_and_delegation() -> None:
 		assert "doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md:45" in rw_out
 		assert "#L45" in rw_out
 		assert "#3---retain-window-compatibility-exception" in rw_out
-
 

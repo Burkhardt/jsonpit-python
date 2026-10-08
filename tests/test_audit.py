@@ -9,6 +9,7 @@ import argparse
 import datetime
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -269,3 +270,54 @@ def test_audit_cli_output_table_and_json() -> None:
 		assert isinstance(parsed, list)
 		assert len(parsed) == 1
 		assert parsed[0]["EventId"] == "ev-001"
+
+
+def test_audit_wwwa_cloud_not_hijacked_by_local_cwd_directory() -> None:
+	"""
+	Regression test: when running `jpit audit --wwwa -c <cloud> -r AIA`,
+	if an eponymous folder `./AIA` exists in the current working directory,
+	the audit target MUST resolve against the cloud root, not the local cwd folder.
+	"""
+	with tempfile.TemporaryDirectory() as tmp_cloud, tempfile.TemporaryDirectory() as tmp_cwd:
+		cloud_root = Path(tmp_cloud) / "CloudData"
+		cloud_root.mkdir(parents=True)
+		tenant_cloud = cloud_root / "AIA"
+		for pit_name in ["Person", "Object", "Place", "Activity"]:
+			p_dir = tenant_cloud / pit_name
+			p_dir.mkdir(parents=True)
+			(p_dir / f"{pit_name}.pit").write_text("[]\n", encoding="utf-8")
+
+		# Create local ./AIA in cwd without .pit files
+		local_aia = Path(tmp_cwd) / "AIA"
+		local_aia.mkdir(parents=True)
+
+		from jsonpit.config import OsConfig
+		mock_cfg = OsConfig({"Cloud": {"MockDrive": str(cloud_root)}})
+		OsConfig._instance = mock_cfg
+
+		orig_cwd = os.getcwd()
+		try:
+			os.chdir(tmp_cwd)
+			args = argparse.Namespace(
+				pit=None,
+				wwwa=True,
+				cloud="MockDrive",
+				root="AIA",
+				machine="all",
+				level="Trace",
+				json=True,
+			)
+			out_json = io.StringIO()
+			old_out = sys.stdout
+			try:
+				sys.stdout = out_json
+				ret = cmd_audit(args)
+			finally:
+				sys.stdout = old_out
+
+			assert ret == 0
+			parsed = json.loads(out_json.getvalue())
+			assert isinstance(parsed, list)
+		finally:
+			os.chdir(orig_cwd)
+			OsConfig.reset()
