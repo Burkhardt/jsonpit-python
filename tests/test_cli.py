@@ -272,7 +272,7 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		assert code_rw == 0
 		rw_out = f_out_rw.getvalue()
 		assert "Option:" in rw_out
-                assert "--retain-window" in rw_out
+		assert "--retain-window" in rw_out
 		assert "CR024" in rw_out
 		assert "doc/CR/CR024_AIA_to_RAIkeep_Ephemeral_Flag_Self_Cleanup.md:45" in rw_out
 		assert "#L45" in rw_out
