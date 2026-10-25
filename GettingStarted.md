@@ -1,8 +1,8 @@
-# Getting Started with Python jsonpit (v4.5.5)
+# Getting Started with Python jsonpit (v4.5.13)
 
 This guide provides a practical walkthrough for using **`jsonpit`** from Python—either embedded as a library in your services, AI agent frameworks, and data pipelines, or as the standalone **`jpit`** CLI for command-line workflows.
 
-It is based on `jsonpit` v4.5.5, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+It is based on `jsonpit` v4.5.13, featuring 100% lockstep parity with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
 
 ---
 
@@ -28,7 +28,7 @@ It is based on `jsonpit` v4.5.5, featuring 100% lockstep parity with C# `JsonPit
 To install the entire suite of CLI tools (`amafu`, `raid`, `iorg`, `pits`, and `jpit`) directly on any machine into `~/.local/bin` without cloning any repository or requiring `sudo`:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.5 local
+curl -fsSL https://raw.githubusercontent.com/Burkhardt/RAIkeep/main/scripts/install-clis.sh | bash -s -- 4.5.13 local
 ```
 
 Verify your installation:
@@ -38,21 +38,29 @@ jpit -v
 
 ---
 
-## 3. Installing `jsonpit` in Python Applications
+## 3. Installing the CLI or Python Library
 
-If you are building a Python service, backend daemon, or AI agent workflow:
+For the CLI, install one pipx environment that supplies both commands:
 
-### Using Standard Python `pip`
-Create and activate an isolated virtual environment:
+```bash
+pipx install "jsonpit==4.5.13"
+# For an existing environment:
+pipx upgrade jsonpit
+jpit --version
+jsonpit --version
+```
+
+The outputs are `jpit v4.5.13` and `jsonpit v4.5.13`. If a separate `jpit` pipx
+environment already exists, run `pipx uninstall jpit`, followed by
+`pipx install --force "jsonpit==4.5.13"` to restore both command links.
+
+Ubuntu/Debian and Homebrew may reject system-wide pip installs as externally
+managed. Use pipx for the CLI, or an isolated virtual environment for library use:
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install --upgrade jsonpit
-```
-
-### Using `uv`
-```bash
-uv add jsonpit
+python -m pip install "jsonpit==4.5.13"
 ```
 
 ---
@@ -61,7 +69,7 @@ uv add jsonpit
 
 `jsonpit` automatically reads your cloud provider roots from `~/.config/RAIkeep.json5` (with fallback to `~/.config/jsonpit.json5` or `$JSONPIT_CONFIG`).
 
-### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu) (v4.5.5)
+### Zero-Friction Setup via [`amafu`](https://www.nuget.org/packages/Amafu) (v4.5.13)
 
 On macOS and Linux, enable your cloud clients (iCloud, OneDrive, Google Drive, Dropbox), then use [`amafu`](https://www.nuget.org/packages/Amafu) to auto-detect your local sync folders and create clean, unified shortcuts in `~/.CloudStorage/`:
 
@@ -279,10 +287,10 @@ Both engines enforce identical timestamp parsing, canonical key ordering, lease 
 
 ## 8. Alternative Installation & Troubleshooting
 
-### Installing only `jpit` standalone (51 KB single file)
+### Installing only `jpit` standalone
 If you only need the `jpit` command without the .NET tools:
 
-👉 **[Download `jpit` binary directly (51 KB)](https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit)**
+👉 **[Download `jpit` standalone executable](https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/bin/jpit)**
 
 Or run via `curl`:
 ```bash

@@ -13,16 +13,15 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
-## Cross-Tool & Cross-Language Version Alignment (`v4.5.5`)
+## Latest Version 4.5.13
 
-`jsonpit` and the `jpit` CLI are version-synchronized to **`v4.5.5`** in direct lockstep with C# `JsonPit` in [RAIkeep](https://github.com/Burkhardt/RAIkeep).
+The Python library and both CLI names, `jpit` and `jsonpit`, use the coordinated RAIkeep version.
 
-### Why Harmonized Versioning is Essential:
-- **Instant Compatibility Clarity:** Operators, DevOps pipelines, and autonomous AI agents immediately know whether `jpit` and `pits` share the exact same distributed protocol revision. If both tools report `4.4.x`, they guarantee identical master leasing rules, receipt mechanisms, 7-digit UTC timestamp parsing, and CR041 clean change file conventions.
-- **Elimination of Multi-Language Matrix Confusion:** In heterogeneous environments (e.g. C# backend daemons paired with Python agent orchestrators and data science tooling), unified SemVer tags eliminate complex cross-compatibility lookup tables.
-- **Joint Protocol Governance:** Architectural changes—such as CR040 anti-Read-Modify-Write rules, CR041 clean change file formatting, CR044 missing configuration diagnostics, CR047 strict patch validation, and [CR049](https://github.com/Burkhardt/jsonpit-python/blob/main/doc/CR/CR049_AIA_and_jsonpit_to_RAIkeep_Live-ID-Validation_and_Zip-Image-Import.md) live ID validation with 4-character change checksums—are certified across both languages under the exact same version milestone before release.
+Latest release notes: [JsonPit 4.5.13 release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/JsonPit_RELEASE_NOTES_4.x.md#4513).
 
----
+## Previous Versions
+
+See the [JsonPit 4.x release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/JsonPit_RELEASE_NOTES_4.x.md).
 
 ## Key Features
 
@@ -76,64 +75,50 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ## Installation & Upgrade
 
-### As a Global CLI Tool (`jpit`) via `pipx` (Recommended)
-To run the `jpit` command-line companion anywhere across your machine in an isolated environment without polluting system packages:
+Python 3.12 or newer is required.
+
+### CLI with pipx
+
+Install one environment for both commands:
 
 ```bash
-# Install globally
-pipx install jsonpit
-# (or via companion alias)
-pipx install jpit
+pipx install "jsonpit==4.5.13"
+jpit --version
+jsonpit --version
+```
 
-# Upgrade to the latest lockstep release (v4.5.5)
+To upgrade:
+
+```bash
 pipx upgrade jsonpit
-# (or)
-pipx upgrade jpit
 ```
 
-### In a Project / Virtual Environment via `pip`
-To embed `jsonpit` into your Python applications, data science workflows, or agentic runtimes:
+The expected outputs are `jpit v4.5.13` and `jsonpit v4.5.13`. Do not install both
+`jsonpit` and the `jpit` companion into separate pipx environments: both expose
+the same commands. If both were previously installed, remove the redundant
+companion environment and restore the command links:
 
 ```bash
-# Install
-pip install jsonpit
-
-# Upgrade to the latest release
-pip install --upgrade jsonpit
+pipx uninstall jpit
+pipx install --force "jsonpit==4.5.13"
 ```
 
-### Upgrading with Multi-Python / `pyenv` Environments
-If you maintain multiple Python versions on your machine (e.g. 3.12, 3.13, 3.14):
+On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
+use `brew install pipx`. Run `pipx ensurepath` and start a new shell if the commands
+are not on PATH. System Python may reject direct pip installation with
+`externally-managed-environment`; use pipx for the CLI.
 
-1. **Always anchor `pip` to your active Python interpreter:**
-   ```bash
-   python -m pip install --upgrade jpit
-   ```
-   *(Avoid bare `pip install`: invoking `pip` directly may resolve to an older Python version in `$PATH`, installing the package into the wrong runtime).*
+### Library in a virtual environment
 
-2. **If using `pyenv`, regenerate shims:**
-   ```bash
-   pyenv rehash
-   ```
-   *This ensures `which jpit` resolves to `~/.pyenv/shims/jpit`, which dynamically routes to whichever Python version is currently active in your shell.*
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install "jsonpit==4.5.13"
+```
 
-3. **Verify the active executable:**
-   ```bash
-   which jpit
-   jpit --version
-   ```
-
-> [!TIP]
-> **Encountering `error: externally-managed-environment` (Homebrew Python or modern Linux / PEP 668)?**  
-> Modern Homebrew and Linux package managers protect their system Python prefix by default. You have two clean options:
-> - **Option A (Isolated CLI via `pipx`):** Run `brew install pipx && pipx ensurepath`, then `pipx install jpit`.
-> - **Option B (Direct install into Homebrew Python):** Pass `--break-system-packages`:
->   ```bash
->   python -m pip install --upgrade --break-system-packages jpit
->   ```
->   *(Completely safe: `jsonpit` has zero runtime dependencies and cannot break system packages).*
-
-*(Both the `jsonpit` library package and the `jpit` companion package provide both `jpit` and `jsonpit` command-line executables).*
+The `jpit` companion distribution is an alternative installation name for the
+same CLI and depends on the matching `jsonpit` release. Prefer `jsonpit` for a new
+installation.
 
 ---
 

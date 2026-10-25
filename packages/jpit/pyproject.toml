@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "jpit"
-version = "4.5.5"
+version = "4.5.13"
 description = "CLI companion and alias for jsonpit — daemon-free distributed storage over Cloud Drives."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -22,8 +22,13 @@ classifiers = [
 	"Topic :: Database :: Database Engines/Servers",
 ]
 dependencies = [
-	"jsonpit>=4.5.5",
+	"jsonpit==4.5.13",
 ]
 
 [project.scripts]
 jpit = "jsonpit.cli:main"
+jsonpit = "jsonpit.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = []
+bypass-selection = true

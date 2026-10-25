@@ -1,72 +1,48 @@
 #!/usr/bin/env python3
-"""
-Builds a standalone, zero-dependency, self-contained single-file executable for jpit.
-Uses Python's built-in zipapp module. No pip, no pipx, no venv, no third-party tools needed.
-Output: dist/jpit (chmod +x, runnable anywhere python3 is present).
-"""
+"""Build the jpit zipapp reproducibly from the current Python sources."""
 
 from __future__ import annotations
 
-import os
+import argparse
+import io
 from pathlib import Path
-import shutil
-import stat
-import tempfile
-import zipapp
+import zipfile
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-SRC_DIR = ROOT_DIR / "jsonpit"
-DIST_DIR = ROOT_DIR / "dist"
-OUTPUT_FILE = DIST_DIR / "jpit"
+ENTRY_POINT = (
+	"import sys\nfrom jsonpit.cli import main\n\n"
+	"if __name__ == '__main__':\n\tsys.exit(main())\n"
+)
 
 
-def build_standalone() -> Path:
-	DIST_DIR.mkdir(parents=True, exist_ok=True)
+def archive_bytes() -> bytes:
+	stream = io.BytesIO()
+	stream.write(b"#!/usr/bin/env python3\n")
+	files = {"__main__.py": ENTRY_POINT.encode("utf-8")}
+	files.update({f"jsonpit/{path.name}": path.read_bytes() for path in (ROOT_DIR / "jsonpit").glob("*.py")})
+	with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+		for name, content in sorted(files.items()):
+			info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+			info.compress_type = zipfile.ZIP_DEFLATED
+			info.create_system = 3
+			info.external_attr = 0o100644 << 16
+			archive.writestr(info, content)
+	return stream.getvalue()
 
-	with tempfile.TemporaryDirectory() as tmp_dir_str:
-		tmp_dir = Path(tmp_dir_str)
-		app_pkg_dir = tmp_dir / "jsonpit"
-		app_pkg_dir.mkdir(parents=True, exist_ok=True)
 
-		# Copy all python source files
-		for src_file in SRC_DIR.glob("*.py"):
-			shutil.copy2(src_file, app_pkg_dir / src_file.name)
-
-		# Write entry point __main__.py
-		entry_point = tmp_dir / "__main__.py"
-		entry_point.write_text(
-			"import sys\n"
-			"from jsonpit.cli import main\n\n"
-			"if __name__ == '__main__':\n"
-			"    sys.exit(main())\n",
-			encoding="utf-8",
-		)
-
-		if OUTPUT_FILE.exists():
-			OUTPUT_FILE.unlink()
-
-		# Build compressed zipapp with standard POSIX python3 shebang
-		zipapp.create_archive(
-			source=tmp_dir,
-			target=OUTPUT_FILE,
-			interpreter="/usr/bin/env python3",
-			compressed=True,
-		)
-
-		# Ensure executable permissions (chmod +x)
-		current_mode = os.stat(OUTPUT_FILE).st_mode
-		os.chmod(OUTPUT_FILE, current_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-		# Also copy to tracked bin/jpit
-		bin_dir = ROOT_DIR / "bin"
-		bin_dir.mkdir(parents=True, exist_ok=True)
-		shutil.copy2(OUTPUT_FILE, bin_dir / "jpit")
-
-	size_kb = OUTPUT_FILE.stat().st_size / 1024.0
-	print(f"📦 Built standalone self-contained executable: {OUTPUT_FILE} ({size_kb:.1f} KB)")
-	print(f"📦 Updated tracked repository executable: {ROOT_DIR / 'bin' / 'jpit'} ({size_kb:.1f} KB)")
-	return OUTPUT_FILE
+def build_standalone(output: Path | None = None) -> Path:
+	content = archive_bytes()
+	paths = [output] if output else [ROOT_DIR / "dist/jpit", ROOT_DIR / "bin/jpit"]
+	for path in paths:
+		path.parent.mkdir(parents=True, exist_ok=True)
+		path.write_bytes(content)
+		path.chmod(0o755)
+		print(f"Built {path} ({len(content)} bytes)")
+	return paths[0]
 
 
 if __name__ == "__main__":
-	build_standalone()
+	parser = argparse.ArgumentParser(description=__doc__)
+	parser.add_argument("--output", type=Path, help="Write only this artifact; leave tracked bin/jpit unchanged.")
+	args = parser.parse_args()
+	build_standalone(args.output)
