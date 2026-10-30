@@ -1,4 +1,4 @@
-# jpit (v4.5.14)
+# jpit (v4.5.15)
 
 `jpit` is the companion distribution for [jsonpit](https://pypi.org/project/jsonpit/).
 It depends on the matching library version and exposes the `jpit` and `jsonpit` commands.
@@ -9,19 +9,19 @@ Python 3.12 or newer is required.
 For a new CLI installation, use one pipx environment:
 
 ```bash
-pipx install "jsonpit==4.5.14"
+pipx install "jsonpit==4.5.15"
 jpit --version
 jsonpit --version
 ```
 
 To upgrade, run `pipx upgrade jsonpit`. Both commands include the `v` prefix in
-their version output, for example `jpit v4.5.14`.
+their version output, for example `jpit v4.5.15`.
 
 If both distributions were installed into separate pipx environments:
 
 ```bash
 pipx uninstall jpit
-pipx install --force "jsonpit==4.5.14"
+pipx install --force "jsonpit==4.5.15"
 ```
 
 Use a virtual environment to embed the library in a Python application. Do not

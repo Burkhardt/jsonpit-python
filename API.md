@@ -1,4 +1,4 @@
-# jsonpit API Reference (v4.5.14)
+# jsonpit API Reference (v4.5.15)
 
 This document provides a foldable, searchable reference for the public `jsonpit` Python API. Designed for 100% C# JsonPit parity, zero third-party runtime dependencies, and Smalltalk-grade object-oriented architecture.
 
@@ -210,5 +210,5 @@ JsonPitError
 ├── PitInstanceConflictError       # Multiple live Pit instances for the same file path
 ├── ProtectedAttributeError        # Client attempted to mutate 'id', 'modified', or 'deleted' (CR040)
 ├── TombstoneError                 # Attempted to delete protected engine attributes
-└── StrictPatchValidationError     # Missing or tombstoned entity under --require-existing (CR047)
+└── StrictPatchValidationError     # Missing or tombstoned entity under --id-exists / --patch (CR047)
 ```

@@ -6,6 +6,7 @@ Exercises 100% lockstep parity with C# pits v4.4.5.
 
 from __future__ import annotations
 
+import pytest
 import contextlib
 import io
 import json
@@ -25,7 +26,8 @@ from jsonpit import (
 from jsonpit.cli import build_parser, main
 
 
-def test_cr047_tc01_patch_existing_entity_succeeds() -> None:
+@pytest.mark.parametrize("option", ["-x", "--id-exists", "--require-exist", "--require-existing", "--patch"])
+def test_cr047_tc01_patch_existing_entity_succeeds(option: str) -> None:
 	"""TC-01: [{"Id": "Alice", "UseCase": "Live"}] with --require-existing succeeds (exit 0)."""
 	with tempfile.TemporaryDirectory() as tmpdir:
 		pit_dir = Path(tmpdir)
@@ -39,7 +41,7 @@ def test_cr047_tc01_patch_existing_entity_succeeds() -> None:
 		f_out = io.StringIO()
 		f_err = io.StringIO()
 		with contextlib.redirect_stdout(f_out), contextlib.redirect_stderr(f_err):
-			code = main(["put", str(pit_dir / "Activity"), str(patch_file), "--require-existing"])
+			code = main(["put", str(pit_dir / "Activity"), str(patch_file), option])
 
 		assert code == 0, f"Expected exit 0, got {code}. stderr: {f_err.getvalue()}"
 		assert "Successfully committed 1 entity(ies)" in f_out.getvalue()
@@ -71,7 +73,7 @@ def test_cr047_tc02_missing_id_rejected_before_write() -> None:
 		assert code == 1
 		err = f_err.getvalue()
 		assert "error: Entity 'Ghost99' does not exist in Pit 'Activity'." in err
-		assert "Use without --require-existing / --patch to allow creating new entities." in err
+		assert "Use without --id-exists / --patch to allow creating new entities." in err
 
 		# Verify Ghost99 was NOT created
 		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
@@ -283,7 +285,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		)
 		assert res3.returncode == 1
 		assert "error: Entity 'Ghost999' does not exist in Pit 'Parity'." in res3.stderr
-		assert "Use without --require-existing / --patch to allow creating new entities." in res3.stderr
+		assert "Use without --id-exists / --patch to allow creating new entities." in res3.stderr
 
 		# 5. Python jpit put with missing ID and --patch fails with identical exact error
 		res4 = subprocess.run(
@@ -292,7 +294,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		)
 		assert res4.returncode == 1
 		assert "error: Entity 'Ghost999' does not exist in Pit 'Parity'." in res4.stderr
-		assert "Use without --require-existing / --patch to allow creating new entities." in res4.stderr
+		assert "Use without --id-exists / --patch to allow creating new entities." in res4.stderr
 
 		# 6. Both reject empty array with identical message
 		empty_file = pit_root / "empty.json"

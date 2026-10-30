@@ -13,11 +13,12 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
-## Latest Version 4.5.14
+## Latest Version 4.5.15
 
-The Python library and both CLI names, `jpit` and `jsonpit`, use the coordinated RAIkeep version.
+The jpit and jsonpit commands share the pits help theme and window/strict-ID
+options. Directory and WWWA exports now match pits through --out-dir.
 
-Latest release notes: [jsonpit-python 4.5.14 release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/JsonPit.Python_RELEASE_NOTES_4.x.md#4514).
+Latest release notes: [jsonpit-python 4.5.15 release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/JsonPit.Python_RELEASE_NOTES_4.x.md#4515).
 
 ## Previous Versions
 
@@ -82,7 +83,7 @@ Python 3.12 or newer is required.
 Install one environment for both commands:
 
 ```bash
-pipx install "jsonpit==4.5.14"
+pipx install "jsonpit==4.5.15"
 jpit --version
 jsonpit --version
 ```
@@ -93,14 +94,14 @@ To upgrade:
 pipx upgrade jsonpit
 ```
 
-The expected outputs are `jpit v4.5.14` and `jsonpit v4.5.14`. Do not install both
+The expected outputs are `jpit v4.5.15` and `jsonpit v4.5.15`. Do not install both
 `jsonpit` and the `jpit` companion into separate pipx environments: both expose
 the same commands. If both were previously installed, remove the redundant
 companion environment and restore the command links:
 
 ```bash
 pipx uninstall jpit
-pipx install --force "jsonpit==4.5.14"
+pipx install --force "jsonpit==4.5.15"
 ```
 
 On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
@@ -113,7 +114,7 @@ are not on PATH. System Python may reject direct pip installation with
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "jsonpit==4.5.14"
+python -m pip install "jsonpit==4.5.15"
 ```
 
 The `jpit` companion distribution is an alternative installation name for the

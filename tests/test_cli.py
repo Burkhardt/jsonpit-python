@@ -237,6 +237,7 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 
 		# 4. Test jpit -r <root> -h dynamic help line with positional colors
 		f_out_help = io.StringIO()
+		f_out_help.isatty = lambda: True
 		old_term = os.environ.get("TERM")
 		old_no_color = os.environ.pop("NO_COLOR", None)
 		try:
@@ -254,7 +255,7 @@ def test_cli_list_discovery_and_ls_alias() -> None:
 		assert code == 0
 		help_out = f_out_help.getvalue()
 		assert "PitNames" in help_out
-		assert f"(current: {root})" in help_out
+		assert str(root) in help_out
 		assert "PitAlpha" in help_out
 		assert "PitBeta" in help_out
 		# 3rd option (idx 2) is blue (\033[94m), 4th option (idx 3) is red (\033[91m)
@@ -305,16 +306,16 @@ def test_general_help_shows_wwwa_pit_status_only_when_explicit_or_contextual() -
 		contextual = io.StringIO()
 		with contextlib.redirect_stdout(contextual):
 			assert main(["--help", "-r", str(root), "-n"]) == 0
-		assert f"{Icons.INFO} Person\t{Icons.SUCCESS}\t{person_file}" in contextual.getvalue()
-		assert f"{Icons.INFO} Activity\t{Icons.NOT_AVAILABLE}" in contextual.getvalue()
+		assert f"{Icons.INFO} Person".ljust(15) + f"  {Icons.SUCCESS}   {person_file}" in contextual.getvalue()
+		assert f"{Icons.INFO} Activity".ljust(15) + f"  {Icons.NOT_AVAILABLE}" in contextual.getvalue()
 
 		explicit = io.StringIO()
 		with contextlib.redirect_stdout(explicit):
 			assert main(["--help", "--wwwa", "-n"]) == 0
-		assert f"{Icons.INFO} Person\t{Icons.NOT_AVAILABLE}\tPerson.pit" in explicit.getvalue()
-		assert f"{Icons.INFO} Object\t{Icons.NOT_AVAILABLE}\tObject.pit" in explicit.getvalue()
-		assert f"{Icons.INFO} Place\t\t{Icons.NOT_AVAILABLE}\tPlace.pit" in explicit.getvalue()
-		assert f"{Icons.INFO} Activity\t{Icons.NOT_AVAILABLE}\tActivity.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Person".ljust(15) + f"  {Icons.NOT_AVAILABLE}   Person.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Object".ljust(15) + f"  {Icons.NOT_AVAILABLE}   Object.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Place".ljust(15) + f"  {Icons.NOT_AVAILABLE}   Place.pit" in explicit.getvalue()
+		assert f"{Icons.INFO} Activity".ljust(15) + f"  {Icons.NOT_AVAILABLE}   Activity.pit" in explicit.getvalue()
 
 
 def test_discovery_output_uses_trailing_directory_separator() -> None:
