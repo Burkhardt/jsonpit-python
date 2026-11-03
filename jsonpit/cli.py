@@ -11,6 +11,7 @@ import copy
 import datetime
 import json
 import os
+import platform
 from pathlib import Path
 import re
 import shutil
@@ -1153,7 +1154,7 @@ def get_cloud_options_description(use_color: bool = True) -> str:
 
 
 def print_banner(use_color: bool = True) -> None:
-	for line in help_style.banner(f"{Icons.INFO} jsonpit CLI (jpit v{__version__})", use_color):
+	for line in help_style.banner(f"{Icons.INFO} jsonpit CLI (jpit v{__version__}) on {platform.node()}", use_color):
 		print(line)
 
 

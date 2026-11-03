@@ -108,5 +108,5 @@ def rows(items: list[Row], enabled: bool) -> list[str]:
 
 
 def banner(title: str, enabled: bool) -> list[str]:
-	rule = Icons.BANNER + " " + "─" * max(40, len(title) - 2)
+	rule = Icons.BANNER + " " + "─" * max(0, len(title) - 2)
 	return [paint(rule, "36", enabled), paint(title, "1;36", enabled), paint(rule, "36", enabled)]
