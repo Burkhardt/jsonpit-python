@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Canvas -->
+    <linearGradient id="bgObsidian" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#11110F"/>
+      <stop offset="100%" stop-color="#1C1C18"/>
+    </linearGradient>
+
+    <!-- eGoli Gold / Johannesburg Warm Reef Gradients -->
+    <linearGradient id="goldEgoli" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F7D373"/>
+      <stop offset="50%" stop-color="#DCA832"/>
+      <stop offset="100%" stop-color="#B38018"/>
+    </linearGradient>
+
+    <linearGradient id="nodeGoldA" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCE496"/>
+      <stop offset="100%" stop-color="#D4A028"/>
+    </linearGradient>
+
+    <linearGradient id="nodeGoldB" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#E5B238"/>
+      <stop offset="100%" stop-color="#B88219"/>
+    </linearGradient>
+
+    <!-- Sync Stream Gradients -->
+    <linearGradient id="syncStreamA" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#F7D373" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#FFFFFF" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#DCA832" stop-opacity="0.9"/>
+    </linearGradient>
+
+    <filter id="glowSync" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#000000" flood-opacity="0.6"/>
+    </filter>
+  </defs>
+
+  <!-- Dark Obsidian Base Ground -->
+  <rect width="512" height="512" rx="104" fill="url(#bgObsidian)"/>
+
+  <!-- Subtle Atmospheric Replication Ring -->
+  <circle cx="256" cy="256" r="218" fill="none" stroke="#262620" stroke-width="2" stroke-dasharray="5 7"/>
+
+  <!-- THE ICONIC ARCHITECTURAL JSON BRACKETS { } -->
+  <!-- Bold, confident, framing the entire multi-machine space -->
+  <g filter="url(#glowSync)">
+    <!-- Left Bracket { -->
+    <path d="M 112,120 
+             C 72,120 62,154 62,198 
+             L 62,228 
+             C 62,248 38,256 24,256 
+             C 38,256 62,264 62,284 
+             L 62,314 
+             C 62,358 72,392 112,392" 
+          fill="none" stroke="#F4F4F0" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- Right Bracket } -->
+    <path d="M 400,120 
+             C 440,120 450,154 450,198 
+             L 450,228 
+             C 450,248 474,256 488,256 
+             C 474,256 450,264 450,284 
+             L 450,314 
+             C 450,358 440,392 400,392" 
+          fill="none" stroke="#F4F4F0" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- MULTI-MACHINE DISTRIBUTED REPLICATION CONSTELLATION -->
+  <g filter="url(#glowSync)">
+
+    <!-- INTER-MACHINE REPLICATION TRACKS / SYNCHRONIZATION ORBITS -->
+    <!-- Bidirectional sync paths connecting Machine 1, Machine 2, and Server/Replica 3 -->
+    <path d="M 256,132 Q 338,200 338,296 Q 256,364 174,296 Q 174,200 256,132 Z" 
+          fill="none" stroke="#33332A" stroke-width="3" stroke-dasharray="8 6"/>
+
+    <!-- Dynamic Delta Waveforms (The asynchronous replication pulse) -->
+    <!-- Stream 1 to 2 -->
+    <path d="M 256,144 C 310,180 330,230 326,290" 
+          fill="none" stroke="url(#syncStreamA)" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Stream 2 to 3 -->
+    <path d="M 314,310 C 276,346 236,346 198,310" 
+          fill="none" stroke="url(#syncStreamA)" stroke-width="3.5" stroke-linecap="round"/>
+    <!-- Stream 3 to 1 -->
+    <path d="M 186,290 C 182,230 202,180 256,144" 
+          fill="none" stroke="url(#syncStreamA)" stroke-width="3.5" stroke-linecap="round"/>
+
+    <!-- CENTRAL EVENTUAL CONSISTENCY NEXUS (Deterministic Projection Center) -->
+    <circle cx="256" cy="256" r="28" fill="#151512" stroke="url(#goldEgoli)" stroke-width="3"/>
+    <circle cx="256" cy="256" r="8" fill="#F4F4F0"/>
+    <!-- Subtly radiating harmonic alignment ring -->
+    <circle cx="256" cy="256" r="44" fill="none" stroke="#5A4A1C" stroke-width="1.5" stroke-dasharray="3 4"/>
+
+    <!-- MACHINE 1 (Top Peak: e.g. Workstation / Local Machine) -->
+    <g transform="translate(256, 136)">
+      <!-- Local Stratified History Discs -->
+      <ellipse cx="0" cy="8" rx="42" ry="14" fill="#0C0C0A" stroke="#7A5A12" stroke-width="2"/>
+      <ellipse cx="0" cy="0" rx="46" ry="16" fill="url(#nodeGoldA)" stroke="#F7D373" stroke-width="2"/>
+      <ellipse cx="0" cy="0" rx="22" ry="7" fill="#1C1C18"/>
+      <!-- Host Core Indicator -->
+      <circle cx="0" cy="0" r="4" fill="#F4F4F0"/>
+    </g>
+
+    <!-- MACHINE 2 (Bottom Right: e.g. Cloud Server / Continuous Sync Node) -->
+    <g transform="translate(328, 304)">
+      <!-- Local Stratified History Discs -->
+      <ellipse cx="0" cy="8" rx="42" ry="14" fill="#0C0C0A" stroke="#7A5A12" stroke-width="2"/>
+      <ellipse cx="0" cy="0" rx="46" ry="16" fill="url(#nodeGoldB)" stroke="#F7D373" stroke-width="2"/>
+      <ellipse cx="0" cy="0" rx="22" ry="7" fill="#1C1C18"/>
+      <!-- Host Core Indicator -->
+      <circle cx="0" cy="0" r="4" fill="#F4F4F0"/>
+    </g>
+
+    <!-- MACHINE 3 (Bottom Left: e.g. Laptop / Remote Agent / Cloud Drive Replica) -->
+    <g transform="translate(184, 304)">
+      <!-- Local Stratified History Discs -->
+      <ellipse cx="0" cy="8" rx="42" ry="14" fill="#0C0C0A" stroke="#7A5A12" stroke-width="2"/>
+      <ellipse cx="0" cy="0" rx="46" ry="16" fill="url(#nodeGoldA)" stroke="#F7D373" stroke-width="2"/>
+      <ellipse cx="0" cy="0" rx="22" ry="7" fill="#1C1C18"/>
+      <!-- Host Core Indicator -->
+      <circle cx="0" cy="0" r="4" fill="#F4F4F0"/>
+    </g>
+
+    <!-- Sparse Change Delta Packets in Flight (Eventual Durability) -->
+    <!-- Packet moving 1 -> 2 -->
+    <circle cx="304" cy="198" r="4.5" fill="#FFFFFF"/>
+    <!-- Packet moving 2 -> 3 -->
+    <circle cx="256" cy="336" r="4.5" fill="#FFFFFF"/>
+    <!-- Packet moving 3 -> 1 -->
+    <circle cx="208" cy="198" r="4.5" fill="#FFFFFF"/>
+
+  </g>
+</svg>

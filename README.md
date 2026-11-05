@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/assets/jsonpit-sync-logo.svg" width="180" height="180" alt="JsonPit Multi-Machine Constellation Logo" />
+</p>
+
 # jsonpit
 
 > **Daemon-free distributed storage over Cloud Drives for developers and AI agents — multi-process, immutable history, zero dependencies.**  

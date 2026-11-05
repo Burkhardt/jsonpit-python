@@ -45,6 +45,7 @@ only-include = [
 	"README.md",
 	"API.md",
 	"pyproject.toml",
+	"assets",
 ]
 
 [tool.pytest.ini_options]
