@@ -857,6 +857,19 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		if item.pit is not None and item.pit is not self:
 			raise RuntimeError(f"Item '{item.id}' belongs to another Pit instance.")
 
+		if item.pit is self and refresh_modified:
+			# CR077: re-adding an owned live handle is a boundary flush, not a
+			# full projection write. Match C# AddCore and preserve sparse history.
+			with self._locker:
+				slot = self._live_items.get(item.id)
+			if slot is None:
+				raise RuntimeError(f"Item '{item.id}' is no longer live in this Pit.")
+			with slot.gate:
+				self._ensure_live_owner(item)
+				if self.tracking_mode == MutationTrackingMode.TrackedChangesWithFallback:
+					return self._flush_live_item(slot)
+				return False
+
 		if refresh_modified:
 			item.ensure_valid_for_live_add()
 
@@ -889,10 +902,8 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		tombstone = PitItem(id=item_id)
 		if tombstone.delete(by=by, backdate_100=backdate_100):
 			res = self.add(tombstone, refresh_modified=True)
-			with self._locker:
-				slot = self._live_items.get(item_id)
-				if slot is not None and slot.current is not None:
-					slot.current.deleted = True
+			# _append_fragment reconciles the tombstone into the live item under
+			# the engine's refresh guard. Do not reassign its protected property.
 			return res
 		return False
 

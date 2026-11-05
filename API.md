@@ -1,4 +1,4 @@
-# jsonpit API Reference (v4.5.18)
+# jsonpit API Reference (v4.6.0)
 
 This document provides a foldable, searchable reference for the public `jsonpit` Python API. Designed for 100% C# JsonPit parity, zero third-party runtime dependencies, and Smalltalk-grade object-oriented architecture.
 
@@ -212,3 +212,15 @@ JsonPitError
 ├── TombstoneError                 # Attempted to delete protected engine attributes
 └── StrictPatchValidationError     # Missing or tombstoned entity under --id-exists / --patch (CR047)
 ```
+
+
+## CR077 mutation contract (4.6.0)
+
+Live handles remain ordinary PitItems. Use indexing, set_property, extend_with,
+merge, delete_property and delete_property_path; save remains the persistence
+boundary. Re-adding an owned live handle flushes pending differences without
+replaying its full projection. PitItem(existing_item) is detached; adding that
+copy as client data is rejected when it carries lifecycle metadata. A matching
+Id assertion in a patch is supported. JSON-array extend validates every row before
+acceptance and creates one combined sparse mutation. Vikela is optional developer
+tooling and is not a jsonpit runtime dependency.

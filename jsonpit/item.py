@@ -279,7 +279,12 @@ class PitItem(MutableMapping[str, Any]):
 			self._data = _wrap_observable(copy.deepcopy(initial._data), self._on_mutation)
 			self._dirty = initial._dirty
 			self._bound_id = initial._bound_id or initial.id
-			self._client_supplied_lifecycle_attribute = initial._client_supplied_lifecycle_attribute
+			# A copy is detached, not another tracked live handle. Its lifecycle
+			# metadata is historical input and must not bypass client-write checks.
+			self._client_supplied_lifecycle_attribute = (
+				initial._client_supplied_lifecycle_attribute
+				or ("Modified" if "Modified" in initial._data else "Deleted" if "Deleted" in initial._data else None)
+			)
 			if pit is not None:
 				self._pit_ref = weakref.ref(pit)
 			if id is not None:
@@ -426,6 +431,8 @@ class PitItem(MutableMapping[str, Any]):
 
 	@id.setter
 	def id(self, value: str) -> None:
+		if self.pit is not None and self._bound_id is not None and not self._refreshing:
+			raise ProtectedAttributeError("Cannot mutate the Id of a live item; use rename_id().")
 		self._data["Id"] = str(value)
 		self.invalidate()
 
@@ -447,6 +454,8 @@ class PitItem(MutableMapping[str, Any]):
 
 	@modified.setter
 	def modified(self, value: datetime.datetime) -> None:
+		if self.pit is not None and self._bound_id is not None and not self._refreshing:
+			raise ProtectedAttributeError("Modified is managed by JsonPit.")
 		if value.tzinfo is None:
 			self._data["Modified"] = value.replace(tzinfo=datetime.timezone.utc)
 		else:
@@ -458,6 +467,8 @@ class PitItem(MutableMapping[str, Any]):
 
 	@deleted.setter
 	def deleted(self, value: bool) -> None:
+		if self.pit is not None and self._bound_id is not None and not self._refreshing:
+			raise ProtectedAttributeError("Deleted is managed by JsonPit; use delete().")
 		self._data["Deleted"] = bool(value)
 
 	@property
@@ -541,7 +552,8 @@ class PitItem(MutableMapping[str, Any]):
 		"""
 		if property_name.lower() in ("id", "modified", "deleted"):
 			raise ProtectedAttributeError(f"Cannot tombstone protected attribute '{property_name}'.")
-		self.deleted = False
+		if self.pit is None:
+			self.deleted = False
 		self._data[property_name] = None
 		if self.pit is None:
 			self.invalidate()
@@ -583,7 +595,8 @@ class PitItem(MutableMapping[str, Any]):
 				)
 
 		container[segments[-1]] = None
-		self.deleted = False
+		if self.pit is None:
+			self.deleted = False
 		if self.pit is None:
 			self.invalidate()
 		else:
@@ -639,6 +652,15 @@ class PitItem(MutableMapping[str, Any]):
 				self.invalidate()
 		return changed
 
+	def _validate_property_patch(self, obj: dict[str, Any]) -> None:
+		# Validate the complete payload before a tracked mutation. A matching Id
+		# is an assertion; other lifecycle attributes belong to the engine.
+		for key, value in obj.items():
+			if key.lower() in ("modified", "deleted") or (
+				key.lower() == "id" and (not isinstance(value, str) or value != self.id)
+			):
+				raise ProtectedAttributeError(f"Cannot manually mutate protected attribute '{key}'.")
+
 	def extend_with(self, obj: dict[str, Any]) -> bool:
 		"""
 		Deep merges a dictionary into this entity.
@@ -646,9 +668,8 @@ class PitItem(MutableMapping[str, Any]):
 		If bound to a Pit, automatically dispatches a single sparse delta fragment.
 		Returns True if any value was modified.
 		"""
-		for k in obj:
-			if k.lower() in ("id", "modified", "deleted"):
-				raise ProtectedAttributeError(f"Cannot manually mutate protected attribute '{k}'.")
+		self._validate_property_patch(obj)
+		obj = {k: v for k, v in obj.items() if k.lower() != "id"}
 		self._refreshing = True
 		try:
 			changed = self._apply_extend(obj)
@@ -667,12 +688,21 @@ class PitItem(MutableMapping[str, Any]):
 		if isinstance(parsed, dict):
 			return self.extend_with(parsed)
 		if isinstance(parsed, list):
-			changed = False
-			for el in parsed:
-				if isinstance(el, dict):
-					changed = self.extend_with(el) or changed
-			return changed
+			# Match C# ExtendWith(JArray): validate every row first, combine the
+			# explicitly supplied fields, and append one logical sparse mutation.
+			patch: dict[str, Any] = {}
+			for element in parsed:
+				if isinstance(element, dict):
+					self._validate_property_patch(element)
+					patch.update(element)
+				else:
+					patch["_"] = element
+			return self.extend_with(patch)
 		return False
+
+	def merge(self, patch: dict[str, Any]) -> bool:
+		"""Merge one explicit property patch, matching the C# instance Merge API."""
+		return self.extend_with(patch)
 
 	def clone(self) -> PitItem:
 		"""Returns an independent deep clone of this PitItem."""

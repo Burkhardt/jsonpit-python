@@ -396,3 +396,110 @@ def test_tracked_changes_only_does_not_reconcile_unsupported_scalar_edits_at_sav
 			td.cleanup()
 	finally:
 		Pit.default_mutation_tracking_mode = prev
+
+
+def test_cr077_readding_live_handle_is_not_full_snapshot_write() -> None:
+	for mode in MutationTrackingMode:
+		pit, td = _new_pit(mode)
+		try:
+			item = _sample_item(); pit.add(item)
+			item.set_property({"Status": "Doing"})
+			before = len(pit.historic_items[item.id].history)
+			assert pit.add(item) is False
+			assert len(pit.historic_items[item.id].history) == before
+			assert set(pit.historic_items[item.id].history[0].keys()) == {"Id", "Modified", "Deleted", "Status"}
+			assert pit[item.id] is item
+		finally:
+			pit.close(); td.cleanup()
+
+
+def test_cr077_detached_copy_cannot_bypass_lifecycle_guard() -> None:
+	pit, td = _new_pit()
+	try:
+		item = _sample_item(); pit.add(item)
+		before = len(pit.historic_items[item.id].history)
+		copy = PitItem(item)
+		try:
+			pit.add(copy)
+		except ProtectedAttributeError:
+			pass
+		else:
+			raise AssertionError("Detached full snapshot was accepted as a live client write")
+		assert len(pit.historic_items[item.id].history) == before
+	finally:
+		pit.close(); td.cleanup()
+
+
+def test_cr077_matching_id_assertion_and_atomic_invalid_patch() -> None:
+	pit, td = _new_pit()
+	try:
+		item = _sample_item(); pit.add(item)
+		assert item.set_property({"Id": item.id, "Status": "Doing"})
+		before = len(pit.historic_items[item.id].history)
+		try:
+			item.set_property({"Status": "Bad", "Modified": "invalid"})
+		except ProtectedAttributeError:
+			pass
+		else:
+			raise AssertionError("Protected payload accepted")
+		assert item["Status"] == "Doing"
+		assert len(pit.historic_items[item.id].history) == before
+	finally:
+		pit.close(); td.cleanup()
+
+
+def test_cr077_merge_and_array_patch_are_single_atomic_sparse_mutations() -> None:
+	pit, td = _new_pit()
+	try:
+		item = _sample_item(); pit.add(item)
+		assert item.merge({"Status": "Pending", "Location": "First"})
+		before = len(pit.historic_items[item.id].history)
+		assert item.extend('[{"Status":"Doing"},{"Location":"Main stage"}]')
+		assert len(pit.historic_items[item.id].history) == before + 1
+		assert set(pit.historic_items[item.id].history[0].keys()) == {"Id", "Modified", "Deleted", "Status", "Location"}
+		before += 1
+		try:
+			item.extend('[{"Status":"Bad"},{"Modified":"invalid"}]')
+		except ProtectedAttributeError:
+			pass
+		else:
+			raise AssertionError("Partial array patch was accepted")
+		assert item["Status"] == "Doing"
+		assert len(pit.historic_items[item.id].history) == before
+	finally:
+		pit.close(); td.cleanup()
+
+
+def test_cr077_historical_replay_cannot_bypass_live_ownership() -> None:
+	first, first_dir = _new_pit(); second, second_dir = _new_pit()
+	try:
+		item = _sample_item(); first.add(item)
+		for write in (second.add, second.add_historical):
+			try:
+				write(item)
+			except RuntimeError:
+				pass
+			else:
+				raise AssertionError("Foreign live owner was accepted")
+		assert not second.contains(item.id)
+	finally:
+		first.close(); second.close(); first_dir.cleanup(); second_dir.cleanup()
+
+
+def test_cr077_live_lifecycle_property_setters_are_guarded_in_both_modes() -> None:
+	for mode in MutationTrackingMode:
+		pit, td = _new_pit(mode)
+		try:
+			item = _sample_item(); pit.add(item)
+			before = item.to_dict(); count = len(pit.historic_items[item.id].history)
+			for name, value in (("id", "Other"), ("modified", utcnow()), ("deleted", True)):
+				try:
+					setattr(item, name, value)
+				except ProtectedAttributeError:
+					pass
+				else:
+					raise AssertionError(f"Protected live property {name} accepted")
+				assert item.to_dict() == before
+				assert len(pit.historic_items[item.id].history) == count
+		finally:
+			pit.close(); td.cleanup()
