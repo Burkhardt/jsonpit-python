@@ -540,7 +540,7 @@ def cmd_put(args: argparse.Namespace) -> int:
 		return 1
 
 	if not items_to_add:
-		print(f"[jpit] Seed source '{source_name}' contained 0 entities.")
+		print(f"[jpit] 0 source items: 0 written, 0 unchanged (Pit '{args.pit}').")
 		return 0
 
 	# CR047: Strict patch mode pre-validation before opening target Pit for writing or creating flags
@@ -577,13 +577,20 @@ def cmd_put(args: argparse.Namespace) -> int:
 		root=args.root,
 		retain_window=getattr(args, "retain_window", False),
 	) as pit:
-		count = 0
+		written = 0
+		unchanged: list[str] = []
 		for raw_obj in items_to_add:
 			item = PitItem(raw_obj)
-			pit.add(item)
-			count += 1
+			if pit.add(item):
+				written += 1
+			else:
+				unchanged.append(item.id)
+		pit.save()
 
-	print(f"[jpit] Successfully committed {count} entity(ies) to Pit '{args.pit}'.")
+	# The context exit has now completed persistence and required window cleanup.
+	if getattr(args, "debug", False):
+		sys.stderr.write(f"[jpit] Unchanged IDs: {json.dumps(unchanged, ensure_ascii=False, separators=(',', ':'))}\n")
+	print(f"[jpit] {len(items_to_add)} source items: {written} written, {len(unchanged)} unchanged (Pit '{args.pit}').")
 	return 0
 
 
@@ -1798,6 +1805,9 @@ def main(argv: list[str] | None = None) -> int:
 		if getattr(args, "debug", False):
 			sys.stderr.write(f"[jpit] command={args.command} cloud={args.cloud!r} root={args.root!r}\n")
 		return cmd_func(args)
+	except OSError as ex:
+		sys.stderr.write(f"error: {ex}\n")
+		return 1
 	except JsonPitError as ex:
 		err_icon = color(Icons.ERROR, C_BOLD + C_RED, use_color)
 		err_label = color("Pit error:", C_BOLD + C_RED, use_color)

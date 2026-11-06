@@ -1,4 +1,4 @@
-# jsonpit API Reference (v4.6.1)
+# jsonpit API Reference (v4.6.2)
 
 This document provides a foldable, searchable reference for the public `jsonpit` Python API. Designed for 100% C# JsonPit parity, zero third-party runtime dependencies, and Smalltalk-grade object-oriented architecture.
 
@@ -224,3 +224,16 @@ copy as client data is rejected when it carries lifecycle metadata. A matching
 Id assertion in a patch is supported. JSON-array extend validates every row before
 acceptance and creates one combined sparse mutation. Vikela is optional developer
 tooling and is not a jsonpit runtime dependency.
+
+## CR081 CLI receipts and lifecycle failures
+
+`jpit seed` and `jpit put` report source-entry written/unchanged counts after
+explicit Save and context exit. A failed local save or required owned-window
+cleanup propagates to a nonzero CLI exit without a success receipt. `close()`
+now raises OSError if the owned activity flag remains after an unsuccessful
+release; `retain_window=True` preserves its explicit release opt-out.
+
+`add()` matches C# latest-fragment comparison ignoring Modified before refreshing
+timestamps. Identical latest fragments return False. Projected-state matches with
+a different latest fragment still append; historical and tombstone semantics
+remain covered by parity tests.

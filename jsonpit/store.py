@@ -580,16 +580,27 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 		refresh_modified: bool = True,
 		adopt_item: PitItem | None = None,
 	) -> bool:
-		if refresh_modified:
-			item.invalidate()
-		else:
-			item.validate()
-
 		with self._locker:
 			current = self._historic_items.get(item.id) or PitItems.create(
 				item.id, self.default_max_count
 			)
+			# CR081: match C# AppendFragment, not projected-state equality.
+			# Compare before stamping; dict equality conflates False and 0, so use
+			# typed canonical JSON for this cross-engine payload comparison.
+			top = current.latest_fragment()
+			if top is not None:
+				previous, incoming = top.to_dict(), item.to_dict()
+				previous.pop("Modified", None)
+				incoming.pop("Modified", None)
+				if canonical_json(previous) == canonical_json(incoming):
+					return False
+			if refresh_modified:
+				item.invalidate()
+			else:
+				item.validate()
 			updated = current.push(item)
+			if updated is current:
+				return False
 			self._historic_items[item.id] = updated
 
 		projected = updated.project_state(with_deleted=True)
@@ -702,7 +713,9 @@ class Pit(JsonPitBase, MutableMapping[str, PitItem], metaclass=PitMeta):
 				if self.has_dirty_items():
 					self.save()
 			if not self.retain_window:
-				self.try_release_process_window()
+				released = self.try_release_process_window()
+				if not released and self._process_flag is not None and self._process_flag.is_owned_by_current_process:
+					raise OSError(f"Could not release the process activity window for Pit '{self.pit_name}'.")
 		finally:
 			self._release_path_ownership()
 			self._disposed = True

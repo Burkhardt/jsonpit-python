@@ -17,11 +17,34 @@ The canonical **reference (lead) implementation** is C# `JsonPit` and the `pits`
 
 ---
 
-## Latest Version 4.6.1
+## CR081 seed disposition receipt (4.6.2 candidate)
+
+Seed receipts count source entries, including repeated IDs, using the engine's
+accepted-fragment result:
+
+```text
+[jpit] 3 source items: 1 written, 2 unchanged (Pit 'Object').
+[jpit] 3 source items: 0 written, 3 unchanged (Pit 'Object').
+```
+
+A no-op exits 0. `--debug` / `-b` lists unchanged IDs on stderr. “Written” means
+newly accepted source fragments whose required local persistence completed;
+it is neither a physical file-write count nor confirmation of cloud replication.
+The success line follows Save and required disposal/process-window cleanup.
+Persistence failures return nonzero without that receipt. `--window` retains its
+existing explicit opt-out from window release; Save must still succeed.
+
+All source entries and strict `-x` / `--id-exists` / `--patch` targets are validated
+before mutation. Equality is against the latest fragment ignoring Modified,
+not against the projected state. A sparse patch matching projected values may
+therefore still append a fragment; distributed ordering and tombstones are preserved.
+
+
+## Latest Version 4.6.2
 
 Show the executing machine as "on <machine>" in the CLI banner. Size both decorative rules to the complete heading, including the hostname; preserve bold cyan styling and plain redirected output. Apply it to both jsonpit and jpit entry points and the standalone artifact.
 
-Latest release notes: [jsonpit-python 4.6.1 release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/JsonPit.Python_RELEASE_NOTES_4.x.md#461).
+Latest release notes: [jsonpit-python 4.6.2 release notes](https://github.com/Burkhardt/RAIkeep/blob/main/doc/releases/v4.x/JsonPit.Python_RELEASE_NOTES_4.x.md#462).
 
 ## Previous Versions
 
@@ -86,7 +109,7 @@ Python 3.12 or newer is required.
 Install one environment for both commands:
 
 ```bash
-pipx install "jsonpit==4.6.1"
+pipx install "jsonpit==4.6.2"
 jpit --version
 jsonpit --version
 ```
@@ -97,14 +120,14 @@ To upgrade:
 pipx upgrade jsonpit
 ```
 
-The expected outputs are `jpit v4.6.1` and `jsonpit v4.6.1`. Do not install both
+The expected outputs are `jpit v4.6.2` and `jsonpit v4.6.2`. Do not install both
 `jsonpit` and the `jpit` companion into separate pipx environments: both expose
 the same commands. If both were previously installed, remove the redundant
 companion environment and restore the command links:
 
 ```bash
 pipx uninstall jpit
-pipx install --force "jsonpit==4.6.1"
+pipx install --force "jsonpit==4.6.2"
 ```
 
 On Ubuntu/Debian, install pipx with `sudo apt install pipx` if needed. On macOS,
@@ -117,7 +140,7 @@ are not on PATH. System Python may reject direct pip installation with
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install "jsonpit==4.6.1"
+python -m pip install "jsonpit==4.6.2"
 ```
 
 The `jpit` companion distribution is an alternative installation name for the

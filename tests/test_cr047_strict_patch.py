@@ -44,7 +44,7 @@ def test_cr047_tc01_patch_existing_entity_succeeds(option: str) -> None:
 			code = main(["put", str(pit_dir / "Activity"), str(patch_file), option])
 
 		assert code == 0, f"Expected exit 0, got {code}. stderr: {f_err.getvalue()}"
-		assert "Successfully committed 1 entity(ies)" in f_out.getvalue()
+		assert "1 source items: 1 written, 0 unchanged" in f_out.getvalue()
 
 		# Verify projection has both original and patched attributes
 		with Pit.open(pit_dir / "Activity", read_only=True) as pit:
@@ -227,13 +227,15 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 	CR047 Cross-Engine Parity:
 	Verifies that C# pits v4.4.5 and Python jpit v4.4.5 behave identically on the same disk storage.
 	"""
-	pits_bin = shutil.which("pits")
+	candidate = Path(__file__).resolve().parents[2] / "PitSeeder/pits/bin/Debug/net10.0/pits.dll"
+	pits_bin = shutil.which("dotnet") if candidate.is_file() else shutil.which("pits")
+	pits_command = [pits_bin, str(candidate)] if candidate.is_file() else [pits_bin]
 	if not pits_bin:
 		# If pits is not on PATH, skip cross-CLI test
 		return
 
 	# Confirm pits reports current version matching jpit
-	res_v = subprocess.run([pits_bin, "-v"], capture_output=True, text=True, check=True)
+	res_v = subprocess.run([*pits_command, "-v"], capture_output=True, text=True, check=True)
 	if res_v.stdout.strip() != f"pits v{__version__}":
 		return
 
@@ -252,7 +254,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 			capture_output=True, text=True
 		)
 		assert res1.returncode == 0
-		assert "[jpit] Successfully committed 2 entity(ies) to Pit" in res1.stdout
+		assert "[jpit] 2 source items: 2 written, 0 unchanged (Pit" in res1.stdout
 
 		# 2. C# pits seeds with --require-existing on existing entities
 		patch_existing = pit_root / "patch_existing.json"
@@ -261,11 +263,11 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 			{"Id": "Agent7001", "Role": "QA"},
 		]))
 		res2 = subprocess.run(
-			[pits_bin, "seed", "Parity", "--source", str(patch_existing), "--require-existing", "-r", str(pit_root), "-n"],
+			[*pits_command, "seed", "Parity", "--source", str(patch_existing), "--require-existing", "-r", str(pit_root), "-n"],
 			capture_output=True, text=True
 		)
 		assert res2.returncode == 0, f"pits seed failed: {res2.stderr}"
-		assert "[pits] Successfully committed 2 entity(ies) to Pit 'Parity'." in res2.stdout
+		assert "[pits] 2 source items: 2 written, 0 unchanged (Pit 'Parity')." in res2.stdout
 
 		# 3. Python jpit verifies projected state
 		with Pit.open(pit_path, read_only=True) as pit:
@@ -280,7 +282,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 			{"Id": "Ghost999", "Role": "Phantom"},
 		]))
 		res3 = subprocess.run(
-			[pits_bin, "seed", "Parity", "--source", str(patch_bad), "--patch", "-r", str(pit_root), "-n"],
+			[*pits_command, "seed", "Parity", "--source", str(patch_bad), "--patch", "-r", str(pit_root), "-n"],
 			capture_output=True, text=True
 		)
 		assert res3.returncode == 1
@@ -301,7 +303,7 @@ def test_cr047_tc09_cross_engine_parity_with_csharp_pits() -> None:
 		empty_file.write_text("[]")
 
 		res_pits_empty = subprocess.run(
-			[pits_bin, "seed", "Parity", "--source", str(empty_file), "--require-existing", "-r", str(pit_root), "-n"],
+			[*pits_command, "seed", "Parity", "--source", str(empty_file), "--require-existing", "-r", str(pit_root), "-n"],
 			capture_output=True, text=True
 		)
 		assert res_pits_empty.returncode == 1
