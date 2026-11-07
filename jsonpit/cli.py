@@ -28,7 +28,7 @@ from .exceptions import (
 	ProtectedAttributeError,
 	StrictPatchValidationError,
 )
-from .fs import resolve_command_pit_root, resolve_pit_target
+from .fs import is_explicit_path, resolve_command_pit_root, resolve_pit_target
 from .icons import Icons
 from . import cli_style as help_style
 from .store import (
@@ -70,7 +70,7 @@ def discover_pits(
 	"""
 	# Check if target is current directory or default
 	if target in (".", ""):
-		cwd = Path.cwd()
+		cwd = resolve_command_pit_root(root=root, cloud=cloud, operation="grep") if root or cloud else Path.cwd()
 		discovered_cwd: list[tuple[Path, str]] = []
 		for child in sorted(cwd.iterdir()):
 			if child.is_dir():
@@ -79,7 +79,7 @@ def discover_pits(
 					discovered_cwd.append((child, child.name))
 			elif child.suffix.lower() == ".pit":
 				discovered_cwd.append((child.parent, child.stem))
-		if discovered_cwd:
+		if discovered_cwd or root or cloud:
 			return discovered_cwd
 
 	# Check if target is a single pit or an explicit directory
@@ -328,16 +328,6 @@ def cmd_history(args: argparse.Namespace) -> int:
 	return 0
 
 
-def _is_explicit_local_directory(value: str) -> bool:
-	"""Returns whether value identifies a local filesystem path rather than a tenant name."""
-	return (
-		value.startswith(("/", "~", ".", "\\"))
-		or "/" in value
-		or "\\" in value
-		or Path(os.path.expanduser(value)).is_dir()
-	)
-
-
 def _discover_pit_names(directory: Path) -> list[str]:
 	if not directory.is_dir():
 		return []
@@ -389,7 +379,7 @@ def _discover_tenant_roots(root: str, cloud: str | None, all_clouds: bool) -> li
 	if cloud:
 		candidate = resolve_command_pit_root(root=root, cloud=cloud, target_name=root, operation="list")
 		return [(cloud, candidate, _discover_pit_names(candidate))]
-	if _is_explicit_local_directory(root):
+	if is_explicit_path(root):
 		candidate = Path(os.path.abspath(os.path.expanduser(root)))
 		return [(None, candidate, _discover_pit_names(candidate))]
 
@@ -413,10 +403,10 @@ def _require_explicit_mutation_location(args: argparse.Namespace) -> None:
 	if getattr(args, "cloud", None):
 		return
 	root = getattr(args, "root", None)
-	if root and _is_explicit_local_directory(root):
+	if root and is_explicit_path(root):
 		return
 	pit = getattr(args, "pit", None)
-	if pit and _is_explicit_local_directory(str(pit)):
+	if pit and is_explicit_path(str(pit)):
 		return
 	label = root or pit or "the requested Pit"
 	raise JsonPitError(
@@ -711,7 +701,11 @@ def cmd_export(args: argparse.Namespace) -> int:
 
 	def project(name: str) -> tuple[str, list[dict[str, Any]]]:
 		target = base / name if base is not None else name
-		with Pit.open(target, read_only=True, unflagged=True) as pit:
+		pit_dir, pit_name = resolve_pit_target(target, cloud=args.cloud, root=args.root)
+		canonical = pit_dir / f"{pit_name}.pit"
+		if not canonical.is_file():
+			raise PitNotFoundError(f"Export source pit does not exist: {canonical}")
+		with Pit.open(canonical, read_only=True, unflagged=True) as pit:
 			items = []
 			for key in pit.keys():
 				item = pit.get(key, at=at_time)

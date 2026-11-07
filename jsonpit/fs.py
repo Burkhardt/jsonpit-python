@@ -15,6 +15,12 @@ from .config import DEFAULT_CONFIG_FILE_LOCATION, OsConfig, missing_configuratio
 from .exceptions import PitNotFoundError
 
 
+def is_explicit_path(value: str | Path) -> bool:
+	"""Distinguishes path syntax from bare tenant names, regardless of local existence."""
+	raw = str(value).strip()
+	return isinstance(value, Path) or raw.startswith(("/", "~", ".", "\\")) or "/" in raw or "\\" in raw
+
+
 def resolve_pit_target(
 	name_or_path: str | Path,
 	cloud: str | None = None,
@@ -32,17 +38,9 @@ def resolve_pit_target(
 	3. Explicit file: Pit.open("/path/to/AfricaStage/Person/Person.pit")
 	   -> (/path/to/AfricaStage/Person/, "Person")
 	"""
-	cfg = config or OsConfig.load()
-
 	raw_str = str(name_or_path).strip()
-	is_explicit_path = (
-		isinstance(name_or_path, Path)
-		or raw_str.startswith(("/", "~", ".", "\\"))
-		or ("/" in raw_str and not raw_str.startswith("-"))
-		or ("\\" in raw_str)
-	)
 
-	if is_explicit_path:
+	if is_explicit_path(name_or_path):
 		resolved = Path(os.path.abspath(os.path.expanduser(raw_str)))
 		if resolved.suffix.lower() == ".pit":
 			pit_dir = resolved.parent
@@ -51,6 +49,12 @@ def resolve_pit_target(
 			pit_dir = resolved
 			pit_name = resolved.name
 		return pit_dir, pit_name
+
+	# An explicit root remains local even without configured cloud providers.
+	if root and is_explicit_path(root):
+		return Path(os.path.abspath(os.path.expanduser(str(root)))) / raw_str, raw_str
+
+	cfg = config or OsConfig.load()
 
 	# CR044 §7.4: If attempting cloud triad resolution and no configuration file exists
 	if not cfg.is_config_loaded:
@@ -81,36 +85,27 @@ def resolve_command_pit_root(
 	config: OsConfig | None = None,
 ) -> Path:
 	"""
-	Resolves a tenant pit root directory adhering to 100% C# pits CLI parity:
+	Resolves a tenant pit root directory:
 	- If an explicit filesystem path is provided (e.g. starting with /, ~, .), resolves directly.
 	- If cloud is provided: resolves cloud root via OsConfig and appends relative root.
-	  Crucially, does NOT treat relative root strings as local filesystem directories.
-	- If cloud is not provided and root is provided: resolves root directly.
+	- A bare tenant name without cloud uses OsConfig's configured default cloud.
+	  Never falls back to a same-named local directory.
 	- If neither is provided: raises PitNotFoundError.
 	"""
 	raw_root = str(root).strip() if root else ""
-	is_explicit = (
-		isinstance(root, Path)
-		or raw_root.startswith(("/", "~", ".", "\\"))
-		or ("/" in raw_root and not raw_root.startswith("-"))
-		or ("\\" in raw_root)
-	)
-	if is_explicit:
+	if root and is_explicit_path(root):
 		return Path(os.path.abspath(os.path.expanduser(raw_root)))
 
 	cfg = config or OsConfig.load()
-	if cloud:
+	if cloud or raw_root:
 		if not cfg.is_config_loaded:
 			raise PitNotFoundError(missing_configuration_diagnostic())
 		cloud_root = cfg.get_cloud_root(cloud)
 		if not cloud_root or not cloud_root.is_dir():
 			raise PitNotFoundError(
-				f"The requested cloud provider '{cloud}' is missing or empty in {DEFAULT_CONFIG_FILE_LOCATION}."
+				f"The requested cloud provider '{cloud or 'default'}' is missing or unavailable in {DEFAULT_CONFIG_FILE_LOCATION}."
 			)
 		return cloud_root / raw_root.strip("/\\") if raw_root else cloud_root
-
-	if raw_root:
-		return Path(os.path.abspath(os.path.expanduser(raw_root)))
 
 	raise PitNotFoundError(
 		f"Cannot resolve {operation} target '{target_name}' without -r or --pitroot, or a configured -c or --cloud provider."
