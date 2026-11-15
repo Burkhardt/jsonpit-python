@@ -7,7 +7,7 @@
 > [!WARNING]
 > **FROZEN REPOSITORY & SUNSET NOTICE**  
 > `jsonpit-python` / `jsonpit` is frozen and no longer under active development.  
-> Active Python development for distributed JSON persistence and the `jpit` / `umgodi` CLI has migrated to [`umgodi-json`](https://github.com/Burkhardt/umgodi-json) (PyPI: [`umgodi-json`](https://pypi.org/project/umgodi-json/)).  
+> The original developer continues Python development, including the `jpit` and `umgodi` commands, in [`umgodi-json`](https://github.com/Burkhardt/umgodi-json) (PyPI: [`umgodi-json`](https://pypi.org/project/umgodi-json/)).
 > Please upgrade and switch to `umgodi-json` (`pip install umgodi-json`) and `import umgodi`.
 
 > **Daemon-free distributed storage over Cloud Drives for developers and AI agents — multi-process, immutable history, zero dependencies.**  
