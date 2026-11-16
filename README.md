@@ -2,16 +2,25 @@
   <img src="https://raw.githubusercontent.com/Burkhardt/jsonpit-python/main/assets/jsonpit-sync-logo.svg" width="180" height="180" alt="JsonPit Multi-Machine Constellation Logo" />
 </p>
 
-# jsonpit
+# jsonpit-python (frozen)
 
 > [!WARNING]
 > **FROZEN REPOSITORY & SUNSET NOTICE**  
-> `jsonpit-python` / `jsonpit` is frozen and no longer under active development.  
-> The original developer continues Python development, including the `jpit` and `umgodi` commands, in [`umgodi-json`](https://github.com/Burkhardt/umgodi-json) (PyPI: [`umgodi-json`](https://pypi.org/project/umgodi-json/)).
-> Please upgrade and switch to `umgodi-json` (`pip install umgodi-json`) and `import umgodi`.
+> `jsonpit-python` / `jsonpit` is frozen and no longer under active development.
+> The original developer continues Python development in [`umgodi-json` on PyPI](https://pypi.org/project/umgodi-json/),
+> with the `umgodi` import package and the continuing `jpit` CLI.
+> Install the successor with `pip install umgodi-json` and use `import umgodi`.
 
 > **Daemon-free distributed storage over Cloud Drives for developers and AI agents — multi-process, immutable history, zero dependencies.**  
 > *100% C# JsonPit Parity · Zero Third-Party Runtime Dependencies · Smalltalk-Grade Object-Oriented Architecture*
+
+This repository preserves the historical `jsonpit-python` line for reference.
+Its heritage continues in `umgodi-json`, which remains storage-compatible with
+the C# `JsonPit` implementation on [GitHub](https://github.com/Burkhardt/JsonPit)
+and [NuGet](https://www.nuget.org/packages/JsonPit/). The active Python
+framework dependency is [`inqaba`](https://github.com/Burkhardt/inqaba), and
+[`vikela`](https://github.com/Burkhardt/vikela) supplies Python guardrails for
+the framework's opinionated APIs.
 
 JsonPit change requests and release notes are centralized in the RAIkeep [`doc/`](https://github.com/Burkhardt/RAIkeep/tree/main/doc) directory under `JsonPit_...` filenames; they are not stored separately in this child repository.
 

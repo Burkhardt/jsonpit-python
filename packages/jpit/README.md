@@ -1,7 +1,11 @@
-# jpit (v4.6.3)
+# jpit (v4.6.3, frozen)
 
-`jpit` is the companion distribution for [jsonpit](https://pypi.org/project/jsonpit/).
-It depends on the matching library version and exposes the `jpit` and `jsonpit` commands.
+This is the frozen `jpit` companion for the historical
+[`jsonpit-python`](https://github.com/Burkhardt/jsonpit-python) project. Active
+Python development continues in [`umgodi-json`](https://github.com/Burkhardt/umgodi-json),
+which keeps developing the `jpit` CLI and provides the `umgodi` import package.
+The C# `JsonPit` implementation remains the heritage and cross-engine
+reference; the Python successor is intentionally named `umgodi-json`.
 Python 3.12 or newer is required.
 
 ## Installation
@@ -28,5 +32,5 @@ pipx install --force "jsonpit==4.6.3"
 Use a virtual environment to embed the library in a Python application. Do not
 bypass the operating system's externally managed Python protection.
 
-See the [Getting Started guide](https://github.com/Burkhardt/jsonpit-python/blob/main/GettingStarted.md)
-and [API reference](https://github.com/Burkhardt/jsonpit-python/blob/main/API.md).
+For active development, use the [Umgodi Getting Started guide](https://github.com/Burkhardt/umgodi-json/blob/main/GettingStarted.md)
+and [API reference](https://github.com/Burkhardt/umgodi-json/blob/main/API.md).
