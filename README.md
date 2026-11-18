@@ -4,6 +4,8 @@
 
 # jsonpit-python (frozen)
 
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+
 > [!WARNING]
 > **FROZEN REPOSITORY & SUNSET NOTICE**  
 > `jsonpit-python` / `jsonpit` is frozen and no longer under active development.

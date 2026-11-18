@@ -1,5 +1,7 @@
 # jpit (v4.6.3, frozen)
 
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+
 This is the frozen `jpit` companion for the historical
 [`jsonpit-python`](https://github.com/Burkhardt/jsonpit-python) project. Active
 Python development continues in [`umgodi-json`](https://github.com/Burkhardt/umgodi-json),
