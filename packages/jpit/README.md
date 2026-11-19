@@ -1,6 +1,6 @@
 # jpit (v4.6.3, frozen)
 
-[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md) · SignPath Foundation application in preparation; signing is not yet active.
 
 This is the frozen `jpit` companion for the historical
 [`jsonpit-python`](https://github.com/Burkhardt/jsonpit-python) project. Active

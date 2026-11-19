@@ -4,7 +4,7 @@
 
 # jsonpit-python (frozen)
 
-[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md)
+[Code signing policy](https://github.com/Burkhardt/RAIkeep/blob/main/README_codesigning.md) · SignPath Foundation application in preparation; signing is not yet active.
 
 > [!WARNING]
 > **FROZEN REPOSITORY & SUNSET NOTICE**  
